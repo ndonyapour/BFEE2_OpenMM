@@ -1,0 +1,12 @@
+*~
+*.pyc
+*/__pycache__/
+.DS_Store
+*__pycache__*
+*.pkl
+*.h5
+*.log
+wepy.egg-info
+*.dcd
+*#*#
+*.orch

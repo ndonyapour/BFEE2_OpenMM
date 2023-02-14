@@ -1,0 +1,10 @@
+The QUATERNION.cpp has been implemented by Poker Chen and the original code is
+on [[https://github.com/zharmad/plumed2/blob/orient-q/src/colvar/Quaternion.cpp][GitHub]].
+It is the equivalent of the Colvars Orientation CV. There was a bug in reading the input files,
+and I fixed it.
+
+** How to use
+After you download the Plumed files before compiling, do the followings.
+
+- Copy QUATERNION.cpp to PlumedPath/src/colvar
+- Copy Vector.h to src/tools
