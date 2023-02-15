@@ -37,16 +37,17 @@ PRESSURE = 1.0 * unit.atmosphere
 VOLUME_MOVE_FREQ = 50
 
 # reporter
-NUM_STEPS = 10000000 # 500000 = 1ns
-DCD_REPORT_STEPS = 5000
+NUM_STEPS = 5000000 # 500000 = 1ns
+DCD_REPORT_STEPS = 1
 CHECKPOINT_REPORTER_STEPS =  5000
+LOG_REPORTER_STEPS = 1
 OUTPUTS_PATH = osp.realpath(f'outputs')
 SIM_TRAJ = 'traj.dcd'
 CHECKPOINT = 'checkpoint.chk'
 CHECKPOINT_LAST = 'checkpoint_last.chk'
 SYSTEM_FILE = 'system.pkl'
 OMM_STATE_FILE = 'state.pkl'
-STAR_CHECKPOINT = '../000_eq/outputs/checkpoint_last.chk'
+STAR_CHECKPOINT = osp.realpath('../000_eq/outputs/checkpoint_last.chk')
 
 #
 if not osp.exists(OUTPUTS_PATH):
@@ -107,7 +108,7 @@ simulation.reporters.append(omma.CheckpointReporter(checkpoint_path,
 simulation.reporters.append(
     omma.StateDataReporter(
         "log",
-        500,
+        LOG_REPORTER_STEPS,
         step=True,
         time=True,
         potentialEnergy=True,
