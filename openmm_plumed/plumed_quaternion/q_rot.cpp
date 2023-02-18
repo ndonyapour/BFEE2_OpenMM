@@ -40,7 +40,8 @@ namespace PLMD{
 class qrotation {
     public:
 
-    Matrix< double > S, C, S_eigvec;
+    Matrix< double > S, S_eigvec;
+    Tensor C;
     std::vector< double > S_eigval;
     Vector4d q;
     double lambda;
@@ -63,39 +64,33 @@ class qrotation {
 
 void qrotation::build_correlation_matrix(const std::vector<Vector> pos1, const std::vector<Vector> pos2){
 
-    C = Matrix<double>(3, 3);
+    C.zero();
     unsigned i;
+
     for(i=0; i<pos1.size(); i++){
-        C[0][0] += pos1[i][0] * pos2[i][0];
-        C[0][1] += pos1[i][0] * pos2[i][1];
-        C[0][2] += pos1[i][0] * pos2[i][2];
-        C[1][0] += pos1[i][1] * pos2[i][0];
-        C[1][1] += pos1[i][1] * pos2[i][1];
-        C[1][2] += pos1[i][1] * pos2[i][2];
-        C[1][0] += pos1[i][2] * pos2[i][0];
-        C[1][1] += pos1[i][2] * pos2[i][1];
-        C[1][2] += pos1[i][2] * pos2[i][2];
+        C += Tensor(pos1[i], pos2[i]); //Here is the order dependence!!
     }
+
 
 }
 void qrotation::calculate_overlap_matrix(void){
     S = Matrix<double>(4,4);
-    S[0][0] = C[0][0] + C[1][1] + C[2][2];
-    S[1][0] = C[1][2] - C[2][1];
-    S[0][1] = S[1][0];
-    S[2][0] =  - C[0][2] + C[2][0];
-    S[0][2] = S[2][0];
-    S[3][0] =    C[0][1] - C[1][0];
-    S[0][3] = S[3][0];
-    S[1][1] =    C[0][0] - C[1][1] - C[2][2];
-    S[2][1] =    C[0][1] + C[1][0];
-    S[1][2] = S[2][1];
-    S[3][1] =    C[0][2] + C[2][0];
-    S[1][3] = S[3][1];
-    S[2][2] = - C[0][0] + C[1][1] - C[2][2];
-    S[3][2] =   C[1][2] + C[2][1];
-    S[2][3] = S[3][2];
-    S[3][3] = - C[0][0] - C[1][1] + C[2][2];
+    S[0][0] =  - C[0][0] - C[1][1]- C[2][2];
+    S[1][1] = - C[0][0] + C[1][1] + C[2][2];
+    S[2][2] =  C[0][0] - C[1][1] + C[2][2];
+    S[3][3] =  C[0][0] + C[1][1] - C[2][2];
+    S[0][1] = - C[1][2] + C[2][1];
+    S[0][2] = C[0][2] - C[2][0];
+    S[0][3] = - C[0][1]+ C[1][0];
+    S[1][2] = - C[0][1]- C[1][0];
+    S[1][3] = - C[0][2]- C[2][0];
+    S[2][3] = - C[1][2]- C[2][1];
+    S[1][0] = S[0][1];
+    S[2][0] = S[0][2];
+    S[2][1] = S[1][2];
+    S[3][0] = S[0][3];
+    S[3][1] = S[1][3];
+    S[3][2] = S[2][3];
 
 }
 void  qrotation::diagonalize_matrix(const Vector4d normquat)
@@ -339,7 +334,7 @@ class Quaternion : public Colvar {
     Matrix<double> S12;
     Vector4d quat2;
     double lambda12;
-    qrotation rot;
+
     // Relevant variables for outputs and derivatives.
     double dist;
     double lambda;
@@ -361,7 +356,6 @@ class Quaternion : public Colvar {
     Tensor ddist_drr01;
     Tensor ddist_drotation;
     std::vector<Vector> diff; // difference of components
-    bool enableFitGradients;
 
 public:
   explicit Quaternion(const ActionOptions&);
@@ -411,11 +405,9 @@ void Quaternion::registerKeywords(Keywords& keys){
   keys.add("compulsory","NORM_DIRECTION","w","q-space is double defined such that q=-q, so it is conventional to define an alignment direction."
                       "This defaults to (1,0,0,0) in general literature, but should be assigned to a similar direction to a restraint."
                       "Options: x=(0,1,0,0), y, z, or an arbitrary quaternion.");
-
   //This must always be optimal rotations.
   //keys.add("compulsory","TYPE","SIMPLE","the manner in which RMSD alignment is performed.  Should be OPTIMAL or SIMPLE.");
   //keys.addFlag("SQUARED",false," This should be setted if you want MSD instead of RMSD ");
-  keys.addFlag("NoFitGradients", false, "If the REFERENCE_B is set ignores the fitting rotational contribution to the CV gradients");
   keys.remove("NOPBC");
   keys.addFlag("COMPONENTS",true,"(Compulsary) Calculate the quaternion as 4-individual colvars, stored as label.w, label.x, label.y and label.z");
   keys.addOutputComponent("w","COMPONENTS","the w-component of the rotational quaternion");
@@ -460,8 +452,7 @@ Quaternion::Quaternion(const ActionOptions&ao):
 //Initialise mypack to be empty with no arguments and no atoms.
 //PLUMED_COLVAR_INIT(ao),posder1(1,0), mypack1(0,0,posder1), posder2(1,0)
 PLUMED_COLVAR_INIT(ao),
-enableFitGradients(true),
-eigenvals(4, 0.0)
+eigenvals(4,0.0)
 {
     fprintf (stderr, "= = Debug: Constructing the QUATERNION colvar...\n");
     bRefc1_is_calculated = false;
@@ -473,21 +464,18 @@ eigenvals(4, 0.0)
     qmat = Matrix<double>(4,4);
     S01  = Matrix<double>(4,4);
     S12  = Matrix<double>(4,4);
-    quat1 = Vector4d(0.0, 0.0,0.0,0.0);
-    quat2 = Vector4d(0.0, 0.0,0.0,0.0);
+    quat1= Vector4d(0.0,0.0,0.0,0.0);
+    quat2= Vector4d(0.0,0.0,0.0,0.0);
 
     string reffile1;
     string reffile2;
 
-    parse("REFERENCE", reffile1);
+    parse("REFERENCE",reffile1);
     parse("REFERENCE_B", reffile2);
     string type;
     type.assign("OPTIMAL");
     string normdir;
     parse("NORM_DIRECTION", normdir);
-    bool noFitGradients = !enableFitGradients;
-    //parseFlag("NOFitGradients", noFitGradients);
-    //enableFitGradients = !noFitGradients;
     //parse("TYPE",type);
 
     //Setup the normalisation direction of q. Initialise a vector
@@ -670,10 +658,10 @@ void Quaternion::setReferenceA(const std::vector<AtomNumber> & inpind, const std
 
     // Only need to iterate over subindices.
     // we might need to change this
-    double wtot=0.0, disptot=0.0; // no weights refw1[i]*refpos1[i]
+    double wtot=0.0, disptot=0.0;  //refw1[i]*
     for(unsigned i=0;i<refnat1;i++) {refc1+=refpos1[i]; wtot+=refw1[i]; disptot+=refdisp1[i];}
     fprintf(stderr, "= = = = = Debug setReferenceA(): wtot is %g and disptot is %g\n", wtot, disptot);
-    refc1/=wtot;
+    refc1/=refpos1.size();
     for(unsigned i=0;i<refnat1;i++) {refpos1[i]-=refc1; refw1[i]=refw1[i]/wtot ; refdisp1[i]=refdisp1[i]/disptot; }
     bRefc1_is_calculated=true;
     bRef1_is_centered=true;
@@ -721,7 +709,7 @@ void Quaternion::setReferenceB(const std::vector<AtomNumber> & inpind, const std
     }
 
     // Only need to iterate over subindices.
-    double wtot=0.0, disptot=0.0;  // no weights refw2[i]*refpos2[i]
+    double wtot=0.0, disptot=0.0;
     for(unsigned i=0;i<refnat2;i++) {refc2+=refw2[i]*refpos2[i]; wtot+=refw2[i]; disptot+=refdisp2[i];}
     fprintf(stderr, "= = = = = Debug setReferenceB(): wtot is %g and disptot is %g\n", wtot, disptot);
     refc2/=wtot;
@@ -880,32 +868,37 @@ void Quaternion::calculateSmat(const unsigned nvals,
     unsigned iloc;
     for(unsigned iat=0;iat<nvals;iat++){
         iloc=iat+offset;
-        rr00+=dotProduct(loc[iloc],loc[iloc])*w[iat];
-        rr11+=dotProduct(ref[iat],ref[iat])*w[iat];
-        rr01+=Tensor(ref[iat],loc[iloc])*w[iat]; //Here is the order dependence!!
+        rr01+=Tensor(ref[iat],loc[iloc]); //Here is the order dependence!!
     }
-
 
     // (3)
     // the quaternion matrix: this is internal
     //Matrix<double> Smat = Matrix<double>(4,4);
     //S=Sint;
-    Smat[0][0]=2.0*(-rr01[0][0]-rr01[1][1]-rr01[2][2]);
-    Smat[1][1]=2.0*(-rr01[0][0]+rr01[1][1]+rr01[2][2]);
-    Smat[2][2]=2.0*(+rr01[0][0]-rr01[1][1]+rr01[2][2]);
-    Smat[3][3]=2.0*(+rr01[0][0]+rr01[1][1]-rr01[2][2]);
-    Smat[0][1]=2.0*(-rr01[1][2]+rr01[2][1]);
-    Smat[0][2]=2.0*(+rr01[0][2]-rr01[2][0]);
-    Smat[0][3]=2.0*(-rr01[0][1]+rr01[1][0]);
-    Smat[1][2]=2.0*(-rr01[0][1]-rr01[1][0]);
-    Smat[1][3]=2.0*(-rr01[0][2]-rr01[2][0]);
-    Smat[2][3]=2.0*(-rr01[1][2]-rr01[2][1]);
+    Smat[0][0]=1.0*(-rr01[0][0]-rr01[1][1]-rr01[2][2]);
+    Smat[1][1]=1.0*(-rr01[0][0]+rr01[1][1]+rr01[2][2]);
+    Smat[2][2]=1.0*(+rr01[0][0]-rr01[1][1]+rr01[2][2]);
+    Smat[3][3]=1.0*(+rr01[0][0]+rr01[1][1]-rr01[2][2]);
+    Smat[0][1]=1.0*(-rr01[1][2]+rr01[2][1]);
+    Smat[0][2]=1.0*(+rr01[0][2]-rr01[2][0]);
+    Smat[0][3]=1.0*(-rr01[0][1]+rr01[1][0]);
+    Smat[1][2]=1.0*(-rr01[0][1]-rr01[1][0]);
+    Smat[1][3]=1.0*(-rr01[0][2]-rr01[2][0]);
+    Smat[2][3]=1.0*(-rr01[1][2]-rr01[2][1]);
     Smat[1][0] = Smat[0][1];
     Smat[2][0] = Smat[0][2];
     Smat[2][1] = Smat[1][2];
     Smat[3][0] = Smat[0][3];
     Smat[3][1] = Smat[1][3];
     Smat[3][2] = Smat[2][3];
+
+    Matrix<double> t = Matrix<double>(4,4);
+    for (unsigned i=0; i<4; i++)
+        for(unsigned j=0; j<4; j++)
+            t[i][j] = Smat[j][i];
+
+    //Smat = t;
+
 
     #ifdef DEBUG__CHENP
     fprintf (stderr, "= = = Debug: S overlap matrix calculated:\n");
@@ -982,6 +975,23 @@ void Quaternion::optimalAlignment1(const std::vector<Vector> & currpos)
      * 3) Then apply forces.
      */
 
+    /* Pseudocode for this function */
+    /*
+    alignDomain1();
+    if (!bRefc2_is_calculated) {
+        setSQLto1();
+    } else {
+        rotateReference2();
+        alignDomain2();
+        set SQLto12();
+    }
+    reportQuaterniontoOutput();
+    calculateDerivatives(); That is...
+    for (unsigned i=0;i<4;i++)
+        for(unsigned j=0;j<getNumberOfAtoms();j++)
+            setAtomsDerivatives(qptr[i], j, dqi/dxj );
+    */
+
     std::vector<Vector> rotloc; //to make a rotatable copy
     std::vector<Vector> rotref1;
     //std::vector<Vector> rotref2;
@@ -989,26 +999,50 @@ void Quaternion::optimalAlignment1(const std::vector<Vector> & currpos)
     #ifdef DEBUG__CHENP
     fprintf(stderr,"= = = DEBUG: OPTIMALALIGNMENT1 has been called. \n");
     #endif
-    //calculateSmat(refpos1.size(), refpos1, refw1, 0, currpos);
-    Vector currpos_cog = calculateCOG(currpos);
-    qrotation rot1;
-    std::vector<Vector> translate_pos;
-    translate_pos = translateCoordinates(currpos, currpos_cog);
-    rot1.calc_optimal_rotation(refpos1, translate_pos, normquat);
-    rot1.build_correlation_matrix(refpos1, translate_pos);
-    rot1.calculate_overlap_matrix();
-    rot1.diagonalize_matrix(normquat);
+    // calculateSmat(refpos1.size(), refpos1, refw1, 0, currpos);
+    // diagMatrix();
 
-    Smat = rot1.S;
+    qrotation rot1;
+
+    std::vector<Vector> translate_pos1, currpos1, currpos2, c ;
+
+    //currpos1.resize(refpos1.size(), Vector);
+    // for (unsigned i=0; i<refpos1.size(); i++ )
+    //     currpos1.push_back(currpos[i]);
+
+    // for (unsigned i=0; i<refpos2.size(); i++ )
+    //     currpos2.push_back(currpos[i+refpos1.size()]);
+
+    Vector currpos_cog = calculateCOG(currpos);
+    translate_pos1 = translateCoordinates(currpos, currpos_cog);
+
+    rot1.request_group1_gradients(currpos.size());
+    rot1.request_group2_gradients(currpos.size());
+    rot1.calc_optimal_rotation(translate_pos1, refpos1, normquat);
+
     qmat = rot1.S_eigvec;
     eigenvals = rot1.S_eigval;
 
     lambda01 = rot1.lambda;
-    quat1 = getQfromEigenvecs();
-    for (unsigned i=0; i<4; i++)
-        fprintf(stderr, "%g %g %g %g\n", quat1[0], quat1[1], quat1[2], quat1[3]);
+    quat1 = rot1.q;
+
+    #ifdef DEBUG__CHENP
+    fprintf(stderr, "= = = = Debug: Printing eigenvalues and eigenvectors:\n");
+    fprintf(stderr, "       lambda: [ %g %g %g %g ]\n", eigenvals[0], eigenvals[1], eigenvals[2], eigenvals[3]);
+    for(unsigned i=0;i<4;i++)
+        fprintf(stderr, "       vec-%i: [ %g %g %g %g ]\n",
+                    i, qmat[i][0], qmat[i][1], qmat[i][2], qmat[i][3]);
+    #endif
 
 
+
+    // fprintf(stderr, " %g %g %g %g \n", eigenvals[0], eigenvals[1], eigenvals[2], eigenvals[3]);
+    //  for(unsigned i=0;i<4;i++) {
+    //     fprintf(stderr, "[ %g %g %g %g ]\n",
+    //                 qmat[i][0], qmat[i][1], qmat[i][2], qmat[i][3]);
+
+     }
+    // fprintf(stderr, "\n \n");
     if (!bRefc2_is_calculated) {
         S01=Smat;
         quat=quat1;
@@ -1059,14 +1093,13 @@ void Quaternion::optimalAlignment1(const std::vector<Vector> & currpos)
         //Single domain. q is ref->loc. Follows group 2 of NAMD.
         //fprintf(stderr, "Singal Domain");
         for (unsigned ia=0;ia<refpos1.size(); ia++) {
+            for (unsigned p=0; p<4; p++) {
 
-                for (unsigned p=0; p <4; p++)
-
-                //fprintf(stderr, "%g %g %g\n", dqidxj[0], dqidxj[1], dqidxj[2]);
-                setAtomsDerivatives(qptr[p], ia, rot.dQ0_2[ia][p]);
+                //fprintf(stderr, "%g %g %g\n", rot1.dQ0_2[ia][p][0],rot1.dQ0_2[ia][p][0], rot1.dQ0_2[ia][p][0]);
+                setAtomsDerivatives(qptr[p], ia, rot1.dQ0_2[ia][p]);
             }
         }
-     else {
+    } else {
         //Two domain relative. We're currently in the frame of domain 1.
         //We are rotating group 1 towards group 2. and group 2 towards group 1.
         //The overlap matrix is actually different for arbitrary atom  sets, and will need to be recalculated.
@@ -1127,7 +1160,6 @@ void Quaternion::optimalAlignment1(const std::vector<Vector> & currpos)
         rotref1 = rotateCoordinates(quat, refpos1, false);
         //Recalculate dSdx for domain 1.
         //fprintf(stderr, "2 groups Domain2");
-        if (enableFitGradients) {
         for (unsigned ia=0; ia<rotref1.size(); ia++) {
             //if (refw1[j]==0) continue; //Only apply forces to weighted atoms in the RMSD calculation.
 
@@ -1172,7 +1204,6 @@ void Quaternion::optimalAlignment1(const std::vector<Vector> & currpos)
                 //fprintf(stderr, "Domain 1 %g %g %g\n", dqidxj[0], dqidxj[1], dqidxj[2]);
                 setAtomsDerivatives(qptr[p], ia, dqidxj);
             }
-        }
         }
     }
     //Now that all derivatives have been calculated set the system box derivatives.
