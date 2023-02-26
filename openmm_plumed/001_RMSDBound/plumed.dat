@@ -3,8 +3,9 @@
 rmsd: RMSD REFERENCE=../inputs/ligand.pdb TYPE=OPTIMAL
 
 # Sampling rmsd within the current window
-lwall-rmsd: LOWER_WALLS ARG=rmsd AT=0.0 KAPPA=80 EXP=2 OFFSET=0 EPS=1
-uwall-rmsd: UPPER_WALLS ARG=rmsd AT=0.3 KAPPA=80 EXP=2 OFFSET=0 EPS=1
+# K = 0.2/(width)^2  = 0.2 /(0.01)^2 = 0.2*10000 = 2000 kj/molnm2
+lwall-rmsd: LOWER_WALLS ARG=rmsd AT=0.0 KAPPA=2000 EXP=2 OFFSET=0 EPS=1
+uwall-rmsd: UPPER_WALLS ARG=rmsd AT=0.3 KAPPA=2000 EXP=2 OFFSET=0 EPS=1
 
 
 METAD ...
@@ -22,7 +23,7 @@ d1: DISTANCE ATOMS=protein,dummyAtom
 translation: RESTRAINT ARG=d1 AT=0 KAPPA=41840
 
 # orientation restraint
-rot_q: QUATERNION REFERENCE=../inputs/protein.pdb # works for whole protein
+rot_q: QUATERNION REFERENCE=../inputs/protein.pdb
 orientation: RESTRAINT ARG=rot_q.w,rot_q.x,rot_q.y,rot_q.z AT=1,0,0,0 KAPPA=8368.0,8368.0,8368.0,8368.0
 
 PRINT ARG=* STRIDE=5000 FILE=COLVAR FMT=%8.4f

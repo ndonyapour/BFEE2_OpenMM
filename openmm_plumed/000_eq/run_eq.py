@@ -40,6 +40,7 @@ VOLUME_MOVE_FREQ = 50
 NUM_STEPS = 5000000 # 500000 = 1ns
 DCD_REPORT_STEPS = 5000
 CHECKPOINT_REPORTER_STEPS =  5000
+LOG_REPORTER_STEPS = 500
 OUTPUTS_PATH = osp.realpath(f'outputs')
 SIM_TRAJ = 'traj.dcd'
 CHECKPOINT = 'checkpoint.chk'
@@ -63,10 +64,6 @@ plumed_file = osp.realpath('plumed.dat')
 checkpoint_path = osp.join(OUTPUTS_PATH, CHECKPOINT) # modify based on the simulation
 
 
-
-# add disulfide bonds to the topology
-#prmtop.topology.createDisulfideBonds(coords.getPositions())
-
 # build the system
 system = prmtop.createSystem(nonbondedMethod=omma.PME,
                             nonbondedCutoff=1*unit.nanometer,
@@ -74,7 +71,6 @@ system = prmtop.createSystem(nonbondedMethod=omma.PME,
 
 # atm, 300 K, with volume move attempts every 50 steps
 barostat = omm.MonteCarloBarostat(PRESSURE, TEMPERATURE, VOLUME_MOVE_FREQ)
-# # add it as a "Force" to the system
 system.addForce(barostat)
 
 # add Plumed
@@ -89,12 +85,9 @@ platform = omm.Platform.getPlatformByName(PLATFORM)
 prop = dict(Precision=PRECISION)
 
 simulation = omma.Simulation(prmtop.topology, system, integrator, platform, prop)
-if osp.exists(checkpoint_path):
-    print("Resatrt Simulation")
-    simulation.loadCheckpoint(checkpoint_path)
-else:
-    print("New Simulation")
-    simulation.context.setPositions(coords)
+
+print("New Simulation")
+simulation.context.setPositions(coords)
 
 simulation.reporters.append(mdj.reporters.DCDReporter(osp.join(OUTPUTS_PATH, SIM_TRAJ),
                                                                 DCD_REPORT_STEPS))
@@ -106,7 +99,7 @@ simulation.reporters.append(omma.CheckpointReporter(checkpoint_path,
 simulation.reporters.append(
     omma.StateDataReporter(
         "log",
-        500,
+        LOG_REPORTER_STEPS,
         step=True,
         time=True,
         potentialEnergy=True,
@@ -118,11 +111,7 @@ simulation.reporters.append(
         separator=" ",
     )
 )
-# # save final state and system
-# get_state_kwargs = dict(GET_STATE_KWARG_DEFAULTS)
-# omm_state = simulation.context.getState(**get_state_kwargs)
-# print("Potential Energy = ", omm_state.getPotentialEnergy())
-# print("energy decomposition = ", pmd.openmm.energy_decomposition(prmtop, simulation.context)) #, nrg=unit.kilojoules_per_mole))
+
 print("Start Simulation")
 start_time = time.time()
 simulation.step(NUM_STEPS)

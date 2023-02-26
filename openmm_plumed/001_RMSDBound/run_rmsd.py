@@ -40,6 +40,7 @@ VOLUME_MOVE_FREQ = 50
 NUM_STEPS = 10000000 # 500000 = 1ns
 DCD_REPORT_STEPS = 5000
 CHECKPOINT_REPORTER_STEPS =  5000
+LOG_REPORTER_STEPS = 500
 OUTPUTS_PATH = osp.realpath(f'outputs')
 SIM_TRAJ = 'traj.dcd'
 CHECKPOINT = 'checkpoint.chk'
@@ -107,7 +108,7 @@ simulation.reporters.append(omma.CheckpointReporter(checkpoint_path,
 simulation.reporters.append(
     omma.StateDataReporter(
         "log",
-        500,
+        LOG_REPORTER_STEPS,
         step=True,
         time=True,
         potentialEnergy=True,

@@ -16,7 +16,6 @@ import simtk.unit as unit
 import mdtraj as mdj
 import parmed as pmd
 import time
-
 # from wepy, to restart a simulation
 GET_STATE_KWARG_DEFAULTS = (('getPositions', True),
                             ('getVelocities', True),
@@ -38,9 +37,9 @@ VOLUME_MOVE_FREQ = 50
 
 # reporter
 NUM_STEPS = 5000000 # 500000 = 1ns
-DCD_REPORT_STEPS = 1
-CHECKPOINT_REPORTER_STEPS =  5000
-LOG_REPORTER_STEPS = 1
+DCD_REPORT_STEPS = 5000000
+CHECKPOINT_REPORTER_STEPS = 5000
+LOG_REPORTER_STEPS = 5000
 OUTPUTS_PATH = osp.realpath(f'outputs')
 SIM_TRAJ = 'traj.dcd'
 CHECKPOINT = 'checkpoint.chk'
@@ -48,8 +47,8 @@ CHECKPOINT_LAST = 'checkpoint_last.chk'
 SYSTEM_FILE = 'system.pkl'
 OMM_STATE_FILE = 'state.pkl'
 STAR_CHECKPOINT = osp.realpath('../000_eq/outputs/checkpoint_last.chk')
+#STAR_CHECKPOINT = osp.realpath('outputs_exp1/checkpoint.chk')
 
-#
 if not osp.exists(OUTPUTS_PATH):
     os.makedirs(OUTPUTS_PATH)
 # the inputs directory and files we need
@@ -65,6 +64,8 @@ plumed_file = osp.realpath('plumed.dat')
 checkpoint_path = osp.join(OUTPUTS_PATH, CHECKPOINT) # modify based on the simulation
 
 
+mdj_pdb = mdj.load_pdb('../inputs/complex.pdb')
+protein_ligand_idxs = mdj_pdb.top.select("protein or resname MOL")
 
 # add disulfide bonds to the topology
 #prmtop.topology.createDisulfideBonds(coords.getPositions())
@@ -92,15 +93,23 @@ prop = dict(Precision=PRECISION)
 
 simulation = omma.Simulation(prmtop.topology, system, integrator, platform, prop)
 if osp.exists(STAR_CHECKPOINT):
-    print("Start from checkpoint")
+    print(f"Start from checkpoint {STAR_CHECKPOINT}")
     simulation.loadCheckpoint(STAR_CHECKPOINT)
 else:
     print("New Simulation")
     simulation.context.setPositions(coords)
 
+# get_state_kwargs = dict(GET_STATE_KWARG_DEFAULTS)
+# omm_state = simulation.context.getState(**get_state_kwargs)
+# positions = omm_state.getPositions(asNumpy=True)._value
+# mdj_pdb.xyz = np.array(positions)
+# mdj_pdb.save('outputs_exp2/final_frame.pdb')
+# import ipdb
+# ipdb.set_trace()
+
 simulation.reporters.append(mdj.reporters.DCDReporter(osp.join(OUTPUTS_PATH, SIM_TRAJ),
-                                                                DCD_REPORT_STEPS))
-                                                                #atomSubset=protein_ligand_idxs))
+                                                                DCD_REPORT_STEPS,
+                                                                atomSubset=protein_ligand_idxs))
 
 simulation.reporters.append(omma.CheckpointReporter(checkpoint_path,
                                                     CHECKPOINT_REPORTER_STEPS))

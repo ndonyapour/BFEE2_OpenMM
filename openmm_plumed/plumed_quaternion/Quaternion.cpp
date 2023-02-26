@@ -74,7 +74,9 @@ class qrotation {
 
 //void qrotation(void)
 qrotation::qrotation(void){
+    q.zero();
     pos1_gradients = pos2_gradients = false;
+
 }
 void qrotation::build_correlation_matrix(const std::vector<Vector> pos1, const std::vector<Vector> pos2){
 
@@ -86,6 +88,7 @@ void qrotation::build_correlation_matrix(const std::vector<Vector> pos1, const s
     }
 }
 void qrotation::calculate_overlap_matrix(void){
+
     S = Matrix<double>(4, 4);
 
     S[0][0] =  - C[0][0] - C[1][1]- C[2][2];
@@ -210,8 +213,8 @@ void qrotation::calc_optimal_rotation(const std::vector<Vector> pos1, const std:
         for (unsigned p=0; p<4; p++) {
             for (unsigned i=0 ;i<4; i++) {
                 for (unsigned j=0; j<4; j++) {
-                    dq0_1[p] += -1 *
-                            ((Q1[i] * ds_1[i][j] * Q0[j]) / (L0-L1) * Q1[p] +
+                    dq0_1[p] += -1 * (
+                            (Q1[i] * ds_1[i][j] * Q0[j]) / (L0-L1) * Q1[p] +
                             (Q2[i] * ds_1[i][j] * Q0[j]) / (L0-L2) * Q2[p] +
                             (Q3[i] * ds_1[i][j] * Q0[j]) / (L0-L3) * Q3[p]);
                     }
@@ -258,8 +261,8 @@ void qrotation::calc_optimal_rotation(const std::vector<Vector> pos1, const std:
         for (unsigned p=0; p<4; p++) {
             for (unsigned i=0 ;i<4; i++) {
                 for (unsigned j=0; j<4; j++) {
-                    dq0_2[p] += -1 *
-                            ((Q1[i] * ds_2[i][j] * Q0[j]) / (L0-L1) * Q1[p] +
+                    dq0_2[p] += -1 * (
+                            (Q1[i] * ds_2[i][j] * Q0[j]) / (L0-L1) * Q1[p] +
                             (Q2[i] * ds_2[i][j] * Q0[j]) / (L0-L2) * Q2[p] +
                             (Q3[i] * ds_2[i][j] * Q0[j]) / (L0-L3) * Q3[p]);
                     }
@@ -353,9 +356,9 @@ Vector4d qrotation::position_derivative_inner(const Vector &pos, const Vector &v
 std::vector<Vector> qrotation::rotateCoordinates(Vector4d qr, const std::vector<Vector> pos){
     std::vector<Vector> rot_pos;
     unsigned ntot = pos.size();
-    rot_pos.resize(ntot, Vector(0,0,0));
+    //rot_pos.resize(ntot, Vector(0,0,0));
     for (unsigned i=0; i<ntot; i++)
-            rot_pos[i] = quaternionRotate(qr, pos[i]);
+            rot_pos.push_back((quaternionRotate(qr, pos[i])));
 
     return rot_pos;
 }
@@ -814,7 +817,7 @@ void Quaternion::optimalAlignment1(const std::vector<Vector> & currpos)
      * 3) Then apply forces.
      */
 
-    qrotation rot;
+
 
     std::vector<Vector> translate_pos1, currpos1, currpos2 ;
 
@@ -832,22 +835,22 @@ void Quaternion::optimalAlignment1(const std::vector<Vector> & currpos)
 
     std::vector<Value*> qptr;
     if (!bRefc2_is_calculated) {
+        qrotation rot;
+        Vector currpos_cog = calculateCOG(currpos1);
+        translate_pos1 = translateCoordinates(currpos1, currpos_cog);
+        rot.request_group2_gradients(currpos.size());
+        rot.calc_optimal_rotation(refpos1, translate_pos1, normquat);
 
-    Vector currpos_cog = calculateCOG(currpos1);
-    translate_pos1 = translateCoordinates(currpos1, currpos_cog);
-    rot.request_group2_gradients(currpos.size());
-    rot.calc_optimal_rotation(refpos1, translate_pos1, normquat);
 
+        qptr = setupQuaternionColvarPtr(rot.q);
+        // gradeints of dq/dx
+        for (unsigned ia=0; ia<refpos1.size(); ia++) {
+            for (unsigned p=0; p<4; p++) {
 
-    qptr = setupQuaternionColvarPtr(rot.q);
-    // gradeints of dq/dx
-    for (unsigned ia=0; ia<refpos1.size(); ia++) {
-        for (unsigned p=0; p<4; p++) {
-
-                //fprintf(stderr, "%g %g %g\n", rot1.dQ0_2[ia][p][0],rot1.dQ0_2[ia][p][0], rot1.dQ0_2[ia][p][0]);
-                // ToDo add each atom weight
-                setAtomsDerivatives(qptr[p], ia, rot.dQ0_2[ia][p] * 1/refpos1.size());
-            }
+                    //fprintf(stderr, "%g %g %g\n", rot1.dQ0_2[ia][p][0],rot1.dQ0_2[ia][p][0], rot1.dQ0_2[ia][p][0]);
+                    // ToDo add each atom weight
+                    setAtomsDerivatives(qptr[p], ia, rot.dQ0_2[ia][p] * 1/refpos1.size());
+             }
         }
     }
 
@@ -856,15 +859,15 @@ void Quaternion::optimalAlignment1(const std::vector<Vector> & currpos)
 
         // Rotation of the first group (fitting group) Center both to the center fitting group
         std::vector<Vector>  translate_fit, translate_pos;
-        qrotation rotfit;
+        qrotation rotfit, rot;
         Vector fit_cog = calculateCOG(currpos1);
-        Vector pos_cog = calculateCOG(currpos2);
 
-        translate_fit = translateCoordinates(currpos1, pos_cog);
+        translate_fit = translateCoordinates(currpos1, fit_cog);
 
         //Vector pos_cog = calculateCOG(currpos2);
         translate_pos = translateCoordinates(currpos2, fit_cog);
 
+        // You need to request gradients first
         rotfit.request_group1_gradients(currpos1.size());
         rotfit.calc_optimal_rotation(translate_fit, refpos1, normquat);
 
@@ -899,9 +902,8 @@ void Quaternion::optimalAlignment1(const std::vector<Vector> & currpos)
         //fprintf(stderr, "Frmae ************************************\n");
         // calculate the fitting group  derivatives
         //rotinv = rot.inverse();
-        // Todo add the center of geometry contribution to the gradients
+        // add the center of geometry contribution to the gradients
         // https://github.com/Colvars/colvars/blob/914a4eee106cb84506bd87f72ad38390732dd8a2/src/colvaratoms.cpp#L1211
-        // Todo, test this section
         if (!NoFitGradients){
             Vector atom_grad;
             for (unsigned i=0; i < currpos2.size(); i++){

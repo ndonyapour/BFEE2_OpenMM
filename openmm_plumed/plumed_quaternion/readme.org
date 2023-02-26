@@ -8,3 +8,6 @@ After you download the Plumed files before compiling, do the followings.
 
 - Copy QUATERNION.cpp to PlumedPath/src/colvar
 - Copy Vector.h to src/tools
+
+Note: If you installed py-plumed using Conda, it automatically installs plumed. You must uninstall the plumed package first
+by doing "conda remove --force plumed".
