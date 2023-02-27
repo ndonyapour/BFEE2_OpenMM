@@ -17,6 +17,28 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 
+
+def report_timing(system, positions, description):
+    """Report timing on all available platforms."""
+    timestep = 2.0*unit.femtoseconds
+    nsteps = 5000
+    for platform_name in ['CUDA']:
+        platform = omm.Platform.getPlatformByName(platform_name)
+
+        integrator = omm.LangevinIntegrator(300*unit.kelvin, 1.0/unit.picoseconds, timestep)
+        context = omm.Context(system, integrator, platform)
+        context.setPositions(positions)
+        # Warm up the integrator
+        integrator.step(10)
+        # Time integration
+        initial_time = time.time()
+        integrator.step(nsteps)
+        final_time = time.time()
+        elapsed_time = (final_time - initial_time) * unit.seconds
+        ns_per_day = nsteps * timestep / elapsed_time / (unit.nanoseconds / unit.day)
+        print('%64s : %16s : %8.3f ns/day' % (description, platform_name, ns_per_day))
+        del context, integrator
+
 # from wepy, to restart a simulation
 GET_STATE_KWARG_DEFAULTS = (('getPositions', True),
                             ('getVelocities', True),
@@ -37,7 +59,7 @@ PRESSURE = 1.0 * unit.atmosphere
 VOLUME_MOVE_FREQ = 50
 
 # reporter
-NUM_STEPS = 5000000 # 500000 = 1ns
+NUM_STEPS = 10 #5000000 # 500000 = 1ns
 DCD_REPORT_STEPS = 5000
 CHECKPOINT_REPORTER_STEPS =  5000
 LOG_REPORTER_STEPS = 500
@@ -77,6 +99,8 @@ system.addForce(barostat)
 with open(plumed_file, 'r') as file:
     script = file.read()
 system.addForce(PlumedForce(script))
+
+report_timing(system, coords, "000_Equilibration step")
 
 # make the integrator
 integrator = omm.LangevinIntegrator(TEMPERATURE, FRICTION_COEFFICIENT, STEP_SIZE)
