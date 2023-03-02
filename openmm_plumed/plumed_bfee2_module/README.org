@@ -6,7 +6,7 @@ It is the equivalent of the Colvars Orientation CV. Also, we have implemented th
 After you download the Plumed files before compiling, do the followings.
 
 - Copy bfee2 folder to Plumed_Dir/src
-Then complie plumed with the bfee2 module enaabled
+Then compile plumed with the bfee2 module enabled
 #+BEGIN_SRC bash
 ./configure  --prefix=$HOME/local/plumed -disable-mpi --disable-gsl --enable-modules=bfee2
 #+END_SRC
