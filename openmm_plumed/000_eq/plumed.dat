@@ -34,10 +34,11 @@ MATHEVAL ...
 ... MATHEVAL
 
 
-# translation restraint
-protein: CENTER ATOMS=protein_atoms
+lig_COM: CENTER ATOMS=ligand_atoms
+prot_COM: CENTER ATOMS=protein_atoms
 dummyAtom: FIXEDATOM AT=4.2773213,3.9284525,3.8494892
-translation: DISTANCE ATOMS=protein,dummyAtom
+
+translation: DISTANCE ATOMS=prot_COM,dummyAtom
 translation_res: RESTRAINT ARG=translation AT=0 KAPPA=41840.0
 
 # orientation restraint
@@ -45,28 +46,23 @@ rot_q: QUATERNION REFERENCE=../inputs/protein.pdb
 orientation_res: RESTRAINT ARG=rot_q.w,rot_q.x,rot_q.y,rot_q.z AT=1,0,0,0 KAPPA=8368.0,8368.0,8368.0,8368.0
 
 
-FIT_TO_TEMPLATE REFERENCE=../inputs/protein.pdb  #  Fit to the protein
-
-lig_COM: CENTER ATOMS=ligand_atoms
-prot_COM: CENTER ATOMS=protein_atoms
-
 r: DISTANCE ATOMS=prot_COM,lig_COM
 
-i: DISTANCE ATOMS=prot_COM,lig_COM COMPONENTS
+i: DISTANCEDIR REFERENCE=../inputs/protein.pdb  REFERENCE_B=../inputs/ligand.pdb
 
 MATHEVAL ...
         LABEL=polarTheta
-        ARG=i.x,i.y,i.z,r
-        VAR=i1,i2,i3,length
-        FUNC=acos(-i2/length)*180/pi
+        ARG=i.x,i.y,i.z
+        VAR=i1,i2,i3
+        FUNC=acos(-i2)*180/pi
         PERIODIC=NO
 ... MATHEVAL
 
 MATHEVAL ...
         LABEL=polarPhi
-        ARG=i.x,i.y,i.z,r
-        VAR=i1,i2,i3,length
-        FUNC=atan2(i3/length,i1/length)*180/pi
+        ARG=i.x,i.y,i.z
+        VAR=i1,i2,i3
+        FUNC=atan2(i3,i1)*180/pi
         PERIODIC=NO
 ... MATHEVAL
 
