@@ -473,27 +473,25 @@ void DistanceDir::optimalAlignment1(const std::vector<Vector> & currpos)
 
     distptr = setupDistanceDirColvarPtr(unit_vec);
 
-    // derivative for posB
-    //  setAtomsDerivatives (valuea,0,matmul(nor,Vector(-1,0,0)));
-    // setAtomsDerivatives (valuea,1,matmul(getPbc().getInvBox(),Vector(+1,0,0)));
-    // valuea->set(Tools::pbc(d[0]));
-    // setAtomsDerivatives (valueb,0,matmul(getPbc().getInvBox(),Vector(0,-1,0)));
-    // setAtomsDerivatives (valueb,1,matmul(getPbc().getInvBox(),Vector(0,+1,0)));
-    //  valueb->set(Tools::pbc(d[1]));
-    // setAtomsDerivatives (valuec,0,matmul(getPbc().getInvBox(),Vector(0,0,-1)));
-    // setAtomsDerivatives (valuec,1,matmul(getPbc().getInvBox(),Vector(0,0,+1)));
-    // // calculate derivatives
+    // com1 = 1/n sum xi
+    // com2 = 1/m sum yi
+    // dist = com2 - com1
+    // norm = sqrt(dx^2+dy^2+dz^2)
+    // u = dist/norm
+    // du/ddx = dy^2 + dz^2/ norm^3
+
     unsigned offset = refposA.size();
-    double unit_vec_sum = unit_vec[0] + unit_vec[1] + unit_vec[2];
-    std::vector <Vector> identity = {Vector(1.0, 0.0, 0.0),
-                                     Vector(0.0, 1.0, 0.0),
-                                     Vector(0.0, 0.0, 1.0)};
+    double  deriv_fact = norm * norm * norm;
+    std::vector <Vector> deriv_matrix = {Vector(unit_vec[1]*unit_vec[1] + unit_vec[2]*unit_vec[2], 0.0, 0.0),
+                                        Vector(0.0, unit_vec[0]*unit_vec[0] + unit_vec[2]*unit_vec[2], 0.0),
+                                        Vector(0.0, 0.0, unit_vec[0]*unit_vec[0] + unit_vec[1]*unit_vec[1])};
 
     for (unsigned ia=0; ia < currposB.size(); ia++) {
         for (unsigned p=0; p<3; p++) {
 
             //fprintf(stderr, "%g %g %g\n", rot.dQ0_2[ia][p][0],rot.dQ0_2[ia][p][0], rot.dQ0_2[ia][p][0]);
-            Vector deriv = rot.quaternionRotate(rot.quaternionInvert(rot.q), unit_vec_sum * unit_vec[p] * identity[p]);
+
+            Vector deriv = rot.quaternionRotate(rot.quaternionInvert(rot.q), deriv_matrix[p]/deriv_fact);
             // ToDo add each atom weight
             setAtomsDerivatives(distptr[p], ia+offset, deriv * 1/currposB.size());
             //sum_grad += rot.dQ0_2[ia][p];
@@ -511,7 +509,7 @@ void DistanceDir::optimalAlignment1(const std::vector<Vector> & currpos)
             //pos_orig = rot_inv.rotate(rot_pos);
             atom_grad.zero();
             for (unsigned p=0; p<3; p++)
-                atom_grad += (rot.quaternionRotate(rot.quaternionInvert(rot.q), unit_vec_sum * unit_vec[p] * identity[p]));
+                atom_grad += rot.quaternionRotate(rot.quaternionInvert(rot.q), deriv_matrix[p]/deriv_fact) * 1/currposB.size();
 
             Vector4d dxdq = rot.position_derivative_inner(translate_posB[i], atom_grad);
 
@@ -519,7 +517,7 @@ void DistanceDir::optimalAlignment1(const std::vector<Vector> & currpos)
                 for (unsigned p=0; p<3; p++) {
 
                     //fprintf(stderr, "%g %g %g\n", rot1.dQ0_2[ia][p][0],rot1.dQ0_2[ia][p][0], rot1.dQ0_2[ia][p][0]);
-                    setAtomsDerivatives(distptr[p], j, dxdq[p] * unit_vec_sum * -1 * unit_vec[p] * identity[p] * 1/currposA.size());
+                    setAtomsDerivatives(distptr[p], j, -1 * dxdq[p] * deriv_matrix[p]/(deriv_fact *currposA.size()));
                 }
 
             }

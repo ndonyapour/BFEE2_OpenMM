@@ -56,7 +56,7 @@ namespace colvar{
  * reference coordinate files, with atoms to be fitted having an occupancy of > 0.0.
  * If only one is given in REFERENCE, then the absolute rotation with the system frame
  * is calculated.
- * If both REFERENCE and REFERENCE_B are given, then the relative orientation
+ * If both REFERENCE and GROUPB_REFERENCE are given, then the relative orientation
  * between the two groups are given is calculated, using the convention
  *  qB = qr.qA, or, qr=qB.qA^-1 = qB.(-qA)
  *
@@ -66,7 +66,7 @@ namespace colvar{
  *
 \par Examples
 
-q: QUATERNION REFERENCE=./refA.pdb REFERENCE_B=./refB.pdb NORM_DIRECTION=1,1,0,0
+q: QUATERNION REFERENCE=./refA.pdb GROUPB_REFERENCE=./refB.pdb NORM_DIRECTION=1,1,0,0
 
 RESTRAINT ARG=q.w,q[0],q[1],q[2] AT=0.70710678118,0.70710678118,0,0 KAPPA=24.94,24.94,24.94,24.94 LABEL=restx
 
@@ -153,8 +153,8 @@ PLUMED_REGISTER_ACTION(Quaternion,"QUATERNION")
 
 void Quaternion::registerKeywords(Keywords& keys){
   Colvar::registerKeywords(keys);
-  keys.add("compulsory","REFERENCE","A file in pdb format containing the reference structure and the atoms involved in the CV.");
-  keys.add("optional","REFERENCE_B","A second reference file for the second group to calculate relative orientation.");
+  keys.add("compulsory", "GROUPA_REFERENCE","A file in pdb format containing the reference structure and the atoms involved in the CV.");
+  keys.add("optional", "GROUPB_REFERENCE","A second reference file for the second group to calculate relative orientation.");
   keys.add("compulsory","NORM_DIRECTION","w","q-space is double defined such that q=-q, so it is conventional to define an alignment direction."
                       "This defaults to (1,0,0,0) in general literature, but should be assigned to a similar direction to a restraint."
                       "Options: x=(0,1,0,0), y, z, or an arbitrary quaternion.");
@@ -209,8 +209,8 @@ PLUMED_COLVAR_INIT(ao)
     string reffile1;
     string reffile2;
 
-    parse("REFERENCE", reffile1);
-    parse("REFERENCE_B", reffile2);
+    parse("GROUPA_REFERENCE", reffile1);
+    parse("GROUPB_REFERENCE", reffile2);
     string type;
     type.assign("OPTIMAL");
     string normdir;
@@ -253,7 +253,7 @@ PLUMED_COLVAR_INIT(ao)
     PDB pdbA; //PDB storage of reference coordinates 1
     PDB pdbB; //PDB storage of reference coordinates 2
 
-    fprintf (stderr, "= = = Debug: Will now read REFERENCE pdb file...\n");
+    fprintf (stderr, "= = = Debug: Will now read GROUPA_REFERENCE pdb file...\n");
     // read everything in ang and transform to nm if we are not in natural units
     if( !pdbA.read(reffile1,plumed.getAtoms().usingNaturalUnits(),0.1/atoms.getUnits().getLength()) )
         error("missing input file " + reffile1 );
@@ -263,7 +263,7 @@ PLUMED_COLVAR_INIT(ao)
     fprintf(stderr, "= = = = Debug: read and parse finished.\n");
 
     if ( !reffile2.empty() ) {
-        fprintf (stderr, "= = = Debug: REFERENCE_B found, parsing second pdb file...\n");
+        fprintf (stderr, "= = = Debug: GROUPB_REFERENCE found, parsing second pdb file...\n");
         if( !pdbB.read(reffile2,plumed.getAtoms().usingNaturalUnits(),0.1/atoms.getUnits().getLength()) )
             error("missing input file " + reffile2 );
 
