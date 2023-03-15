@@ -3,7 +3,6 @@
 rmsd: RMSD REFERENCE=../inputs/ligand.pdb TYPE=OPTIMAL
 
 # Sampling rmsd within the current window
-# K = 0.2/(width)^2  = 0.2 /(0.01)^2 = 0.2*10000 = 2000 kj/molnm2
 lwall-rmsd: LOWER_WALLS ARG=rmsd AT=0.0 KAPPA=2000 EXP=2 OFFSET=0 EPS=1
 uwall-rmsd: UPPER_WALLS ARG=rmsd AT=0.3 KAPPA=2000 EXP=2 OFFSET=0 EPS=1
 
@@ -12,7 +11,7 @@ METAD ...
     LABEL=meta_rmsd ARG=rmsd
     SIGMA=0.01 HEIGHT=2
     PACE=500 FILE=HILLS
-    GRID_MIN=0.0 GRID_MAX=0.4 #GRID_SPACING=0.005,0.005
+    GRID_MIN=0.0 GRID_MAX=0.4
     BIASFACTOR=20 TEMP=300 # biasTemperature=4000
 ... METAD
 

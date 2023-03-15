@@ -36,7 +36,7 @@ def report_timing(system, positions, description):
         final_time = time.time()
         elapsed_time = (final_time - initial_time) * unit.seconds
         ns_per_day = nsteps * timestep / elapsed_time / (unit.nanoseconds / unit.day)
-        print('%64s : %16s : %8.3f ns/day\n' % (description, platform_name, ns_per_day))
+        print('\n *************%64s : %16s : %8.3f ns/day ***************\n' % (description, platform_name, ns_per_day))
         del context, integrator
 
 # from wepy, to restart a simulation
@@ -103,4 +103,4 @@ with open(plumed_file, 'r') as file:
 system.addForce(PlumedForce(script))
 
 # make the integrator
-report_timing(system, coords, "Eq step:")
+report_timing(system, coords, "Run time for this step:")

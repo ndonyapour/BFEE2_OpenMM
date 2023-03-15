@@ -48,7 +48,7 @@ METAD ...
     BIASFACTOR=15 TEMP=300
 ... METAD
 
-# KAPPA = 0.2 Kcal/mol deg2 = 0.2 * 4.184 kJ/mol deg2 ~ 0.84 which was very small and didn't hold the boundaries and I set it to 100 kJ/mol rad
+# KAPPA = 0.2 Kcal/mol.deg2 = 0.2 * 4.184 kJ/mol.deg2 ~ 0.84 which was very small and didn't hold the boundaries and I set it to 100 kJ/mol.deg2
 lwall-polarTheta: LOWER_WALLS ARG=polarTheta AT=47.0 KAPPA=100 EXP=2 OFFSET=0 EPS=1
 uwall-polarTheta: UPPER_WALLS ARG=polarTheta AT=87.0 KAPPA=100 EXP=2 OFFSET=0 EPS=1
 

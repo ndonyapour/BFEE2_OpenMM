@@ -50,15 +50,15 @@ MATHEVAL ...
 
 METAD ...
     LABEL=meta ARG=polarPhi
-    SIGMA=0.5 HEIGHT=0.02
+    SIGMA=0.5 HEIGHT=0.01
     PACE=1000 FILE=HILLS
-    GRID_MIN=47 GRID_MAX=73
+    GRID_MIN=47 GRID_MAX=78
     BIASFACTOR=15 TEMP=300
 ... METAD
 
 # KAPPA = 0.2 Kcal/mol rad2 = 0.2 * 4.184 kJ/mol rad2 ~ 0.84 which was very small and didn't hold the boundaries and I set it to 100 kJ/mol rad
-lwall-polarPhi: LOWER_WALLS ARG=polarPhi AT=50 KAPPA=100 EXP=2 OFFSET=0 EPS=1
-uwall-polarPhi: UPPER_WALLS ARG=polarPhi AT=70 KAPPA=100 EXP=2 OFFSET=0 EPS=1
+lwall-polarPhi: LOWER_WALLS ARG=polarPhi AT=55 KAPPA=100 EXP=2 OFFSET=0 EPS=1
+uwall-polarPhi: UPPER_WALLS ARG=polarPhi AT=75 KAPPA=100 EXP=2 OFFSET=0 EPS=1
 
 # harmonic restraint on ligand rmsd
 # KAPPA=10 kcal/molA2

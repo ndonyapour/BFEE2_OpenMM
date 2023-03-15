@@ -48,6 +48,7 @@ CHECKPOINT = 'checkpoint.chk'
 CHECKPOINT_LAST = 'checkpoint_last.chk'
 SYSTEM_FILE = 'system.pkl'
 OMM_STATE_FILE = 'state.pkl'
+LOG_FILE = 'log'
 
 #
 if not osp.exists(OUTPUTS_PATH):
@@ -101,7 +102,7 @@ simulation.reporters.append(omma.CheckpointReporter(checkpoint_path,
 
 simulation.reporters.append(
     omma.StateDataReporter(
-        "log",
+        LOG_FILE,
         LOG_REPORTER_STEPS,
         step=True,
         time=True,
