@@ -16,7 +16,12 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 from exampleplugin import MyRMSDForce
-omm.Platform.loadPluginsFromDirectory("/home/nz/mambaforge-pypy3/pkgs/openmm-7.7.0-py39h15fbce5_1/lib/plugins")
+sys.path.append('../openmm_pytorch')
+from BFEE2_CV import RMSD_CV, Translation_CV
+
+from exampleplugin import MyRMSDForce
+#omm.Platform.loadPluginsFromDirectory("/home/ndonyapour/miniconda3/pkgs/openmm-torch-0.8-cuda112py39h83a068c_2/lib/plugins")
+
 def report_timing(system, positions, description):
     """Report timing on all available platforms."""
     timestep = 2.0*unit.femtoseconds

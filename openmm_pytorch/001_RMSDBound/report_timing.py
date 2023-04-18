@@ -75,12 +75,12 @@ if not osp.exists(OUTPUTS_PATH):
     os.makedirs(OUTPUTS_PATH)
 # the inputs directory and files we need
 
-inputs_dir = osp.realpath(f'./inputs')
-prmfile = osp.join(inputs_dir, 'complex_largebox.prmtop')
+inputs_dir = osp.realpath(f'../inputs')
+prmfile = osp.join(inputs_dir, 'complex.prmtop')
 # for openmm simulations (0,0,0) is the left corner of box, cerntering molceules to (0, 0, 0) cuases proplems.
 #coodsfile = osp.join(inputs_dir, 'complex.rst7')
 plumed_file = osp.realpath('plumed.dat')
-coords = omma.pdbfile.PDBFile('./inputs/complex_largebox_bfee2.pdb').getPositions()
+coords = omma.pdbfile.PDBFile('../inputs/complex_bfee2.pdb').getPositions()
 
 
 prmtop = omma.amberprmtopfile.AmberPrmtopFile(prmfile)

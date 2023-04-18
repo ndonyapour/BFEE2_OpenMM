@@ -16,6 +16,8 @@ import simtk.unit as unit
 import mdtraj as mdj
 import parmed as pmd
 import time
+
+
 # from wepy, to restart a simulation
 GET_STATE_KWARG_DEFAULTS = (('getPositions', True),
                             ('getVelocities', True),
@@ -36,52 +38,80 @@ PRESSURE = 1.0 * unit.atmosphere
 VOLUME_MOVE_FREQ = 50
 
 # reporter
-NUM_STEPS = 500000000 # 500000 = 1ns
-DCD_REPORT_STEPS = 5000000
-CHECKPOINT_REPORTER_STEPS = 5000
-LOG_REPORTER_STEPS = 5000000
-OUTPUTS_PATH = osp.realpath(f'outputs7')
+NUM_STEPS = 1000 # 500000 = 1ns # test
+DCD_REPORT_STEPS = 500000
+CHECKPOINT_REPORTER_STEPS =  5000
+LOG_REPORTER_STEPS = 500
+OUTPUTS_PATH = osp.realpath(f'outputs')
 SIM_TRAJ = 'traj.dcd'
 CHECKPOINT = 'checkpoint.chk'
 CHECKPOINT_LAST = 'checkpoint_last.chk'
 SYSTEM_FILE = 'system.pkl'
 OMM_STATE_FILE = 'state.pkl'
 LOG_FILE = 'log'
-STAR_CHECKPOINT = osp.realpath('./outputs6/checkpoint.chk')
 
+#
 if not osp.exists(OUTPUTS_PATH):
     os.makedirs(OUTPUTS_PATH)
 # the inputs directory and files we need
-inputs_dir = osp.realpath(f'./inputs')
-prmfile = osp.join(inputs_dir, 'complex_largebox.prmtop')
-prmtop = omma.amberprmtopfile.AmberPrmtopFile(prmfile)
 
+inputs_dir = osp.realpath(f'../../openmm_plumed/inputs')
+prmfile = osp.join(inputs_dir, 'complex.prmtop')
 
+# for openmm simulations (0,0,0) is the left corner of box, cerntering molceules to (0, 0, 0) cuases proplems.
+#coodsfile = osp.join(inputs_dir, 'complex.rst7')
 plumed_file = osp.realpath('plumed.dat')
-checkpoint_path = osp.join(OUTPUTS_PATH, CHECKPOINT) # modify based on the simulation
+coords = omma.pdbfile.PDBFile(osp.join(inputs_dir, 'complex_bfee2.pdb')).getPositions()
 
 
-pdb = mdj.load_pdb(osp.join(inputs_dir, 'complex_largebox_bfee2.pdb'))
-# protein and type!="H"'
-protein_ligand_idxs = pdb.topology.select('protein or resname "MOL"')
+prmtop = omma.amberprmtopfile.AmberPrmtopFile(prmfile)
+# import ipdb
+# ipdb.set_trace()
 
-# add disulfide bonds to the topology
-#prmtop.topology.createDisulfideBonds(coords.getPositions())
+#coords = omma.amberinpcrdfile.AmberInpcrdFile(coodsfile).getPositions()
+checkpoint_path = osp.join(OUTPUTS_PATH, CHECKPOINT)
+
 
 # build the system
 system = prmtop.createSystem(nonbondedMethod=omma.PME,
                             nonbondedCutoff=1*unit.nanometer,
                             constraints=omma.HBonds)
 
+
+# add a dummy atom (ref protein COM) and set its mass to zero
+# find the neighbors
+# pos = coords.values_
+# dist = np.linalg.norm(pos - np.array([4.27077094, 3.93215937, 3.84423549]))
+# import ipdb
+# ipdb.set_trace()
+
+# dummy_atom_idx = system.addParticle(0.0)
+# coords.append(omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers)
+
+
+# # the same particle should be added to the nonbonded forces
+# nonbonded = [f for f in system.getForces() if isinstance(f, omm.NonbondedForce)]
+# for force in nonbonded:
+#     # charge, sigma, epsilon
+#     force.addParticle(0.0, 1.0, 0.0)
+#     for i in range(6000):
+#         import ipdb
+#         ipdb.set_trace()
+#         force.addException(i, dummy_atom_idx, 0.0, 1.0, 0.0)
+
+    # for i in range(dummy_atom_idx):
+    #     force.addException(i, dummy_atom_idx, 0.0, 1.0, 0.0)
+
+# import ipdb
+# ipdb.set_trace()
 # atm, 300 K, with volume move attempts every 50 steps
 barostat = omm.MonteCarloBarostat(PRESSURE, TEMPERATURE, VOLUME_MOVE_FREQ)
-# # add it as a "Force" to the system
 system.addForce(barostat)
 
 # add Plumed
 with open(plumed_file, 'r') as file:
     script = file.read()
-system.addForce(PlumedForce(script))
+#system.addForce(PlumedForce(script))
 
 # make the integrator
 integrator = omm.LangevinIntegrator(TEMPERATURE, FRICTION_COEFFICIENT, STEP_SIZE)
@@ -90,16 +120,22 @@ platform = omm.Platform.getPlatformByName(PLATFORM)
 prop = dict(Precision=PRECISION)
 
 simulation = omma.Simulation(prmtop.topology, system, integrator, platform, prop)
-if osp.exists(STAR_CHECKPOINT):
-    print(f"Start from checkpoint {STAR_CHECKPOINT}")
-    simulation.loadCheckpoint(STAR_CHECKPOINT)
-else:
-    print(f"can not find the checkpoint file {STAR_CHECKPOINT}")
-    exit()
 
+
+
+print("New Simulation")
+simulation.context.setPositions(coords)
+
+get_state_kwargs = dict(GET_STATE_KWARG_DEFAULTS)
+omm_state = simulation.context.getState(**get_state_kwargs)
+positions = omm_state.getPositions(asNumpy=True)._value
+print(positions[dummy_atom_idx])
+
+# import ipdb
+# ipdb.set_trace()
 simulation.reporters.append(mdj.reporters.DCDReporter(osp.join(OUTPUTS_PATH, SIM_TRAJ),
-                                                                DCD_REPORT_STEPS,
-                                                                atomSubset=protein_ligand_idxs))
+                                                                DCD_REPORT_STEPS))
+                                                                #atomSubset=protein_ligand_idxs))
 
 simulation.reporters.append(omma.CheckpointReporter(checkpoint_path,
                                                     CHECKPOINT_REPORTER_STEPS))
@@ -141,3 +177,8 @@ with open(osp.join(OUTPUTS_PATH, SYSTEM_FILE), 'wb') as wfile:
 with open(osp.join(OUTPUTS_PATH, OMM_STATE_FILE), 'wb') as wfile:
     pkl.dump(omm_state, wfile)
 print('Done making pkls. Check inputs dir for them!')
+
+get_state_kwargs = dict(GET_STATE_KWARG_DEFAULTS)
+omm_state = simulation.context.getState(**get_state_kwargs)
+positions = omm_state.getPositions(asNumpy=True)._value
+print(positions[dummy_atom_idx])
