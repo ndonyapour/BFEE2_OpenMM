@@ -15,11 +15,15 @@ import simtk.unit as unit
 import mdtraj as mdj
 import parmed as pmd
 import time
-from exampleplugin import MyRMSDForce
+
 sys.path.append('../openmm_pytorch')
 from BFEE2_CV import RMSD_CV, Translation_CV
+from RMSDCVplugin import RMSDCVForce
 
-from exampleplugin import MyRMSDForce
+DEVICEINDEX = '2'
+PRECISION = 'mixed'
+
+
 #omm.Platform.loadPluginsFromDirectory("/home/ndonyapour/miniconda3/pkgs/openmm-torch-0.8-cuda112py39h83a068c_2/lib/plugins")
 
 def report_timing(system, positions, description):
@@ -30,7 +34,8 @@ def report_timing(system, positions, description):
         platform = omm.Platform.getPlatformByName(platform_name)
 
         integrator = omm.LangevinIntegrator(300*unit.kelvin, 1.0/unit.picoseconds, timestep)
-        context = omm.Context(system, integrator, platform)
+        properties = dict(Precision=PRECISION, DeviceIndex=DEVICEINDEX)
+        context = omm.Context(system, integrator, platform, properties)
         context.setPositions(positions)
         # Warm up the integrator
         integrator.step(10)
@@ -107,7 +112,7 @@ system.addForce(barostat)
 ligand_idxs = mdj.load_pdb(pdb_file).topology.select('resname "MOL" and type!="H"')
 
 # add RMSD Pluging Force
-rmsd_plugin = MyRMSDForce(coords, ligand_idxs.tolist())
+rmsd_plugin = RMSDCVForce(coords, ligand_idxs.tolist())
 
 wall_energy_exp = "0.5*k*(min(0,RMSD-lowerwall)^2+max(0,RMSD-upperwall)^2)"
 wall_restraint_force = omm.CustomCVForce(wall_energy_exp)
@@ -117,12 +122,12 @@ wall_restraint_force.addGlobalParameter('upperwall', 0.3*unit.nanometer)
 wall_restraint_force.addGlobalParameter("k", 2000*unit.kilojoule_per_mole/unit.nanometer**2)
 system.addForce(wall_restraint_force)
 
-#
+# naitive RMSD
 # rmsd_native = omm.RMSDForce(coords, ligand_idxs.tolist())
 
-# wall_energy_exp = "0.5*k*(min(0,RMSD-lowerwall)^2+max(0,RMSD-upperwall)^2)"
+# wall_energy_exp = "0.5*k*(min(0,r-lowerwall)^2+max(0,r-upperwall)^2)"
 # wall_restraint_force = omm.CustomCVForce(wall_energy_exp)
-# wall_restraint_force.addCollectiveVariable('RMSD',  rmsd_native)
+# #wall_restraint_force.addCollectiveVariable('RMSD',  rmsd_native)
 # wall_restraint_force.addGlobalParameter('lowerwall', 0.0*unit.nanometer)
 # wall_restraint_force.addGlobalParameter('upperwall', 0.3*unit.nanometer)
 # wall_restraint_force.addGlobalParameter("k", 2000*unit.kilojoule_per_mole/unit.nanometer**2)
