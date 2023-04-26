@@ -16,9 +16,9 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 
-from RMSDCVplugin import RMSDCVForce
+from Quaternionplugin import QuaternionForce
 
-DEVICEINDEX = '2'
+DEVICEINDEX = '0'
 PRECISION = 'mixed'
 
 
@@ -110,28 +110,16 @@ system.addForce(barostat)
 ligand_idxs = mdj.load_pdb(pdb_file).topology.select('resname "MOL" and type!="H"')
 
 # add RMSD Pluging Force
-rmsd_plugin = RMSDCVForce(coords, ligand_idxs.tolist())
+quaternion_plugin = QuaternionForce(coords, ligand_idxs.tolist())
 
 wall_energy_exp = "0.5*k*(min(0,RMSD-lowerwall)^2+max(0,RMSD-upperwall)^2)"
 wall_restraint_force = omm.CustomCVForce(wall_energy_exp)
-wall_restraint_force.addCollectiveVariable('RMSD',  rmsd_plugin)
+wall_restraint_force.addCollectiveVariable('RMSD',  quaternion_plugin)
 wall_restraint_force.addGlobalParameter('lowerwall', 0.0*unit.nanometer)
 wall_restraint_force.addGlobalParameter('upperwall', 0.3*unit.nanometer)
 wall_restraint_force.addGlobalParameter("k", 2000*unit.kilojoule_per_mole/unit.nanometer**2)
 system.addForce(wall_restraint_force)
 
-# Built-in RMSD
-# rmsd_builtin = omm.RMSDForce(coords, ligand_idxs.tolist())
-
-# wall_energy_exp = "0.5*k*(min(0,r-lowerwall)^2+max(0,r-upperwall)^2)"
-# wall_restraint_force = omm.CustomCVForce(wall_energy_exp)
-# #wall_restraint_force.addCollectiveVariable('RMSD',  rmsd_builtin)
-# wall_restraint_force.addGlobalParameter('lowerwall', 0.0*unit.nanometer)
-# wall_restraint_force.addGlo
-# 
-# balParameter('upperwall', 0.3*unit.nanometer)
-# wall_restraint_force.addGlobalParameter("k", 2000*unit.kilojoule_per_mole/unit.nanometer**2)
-# system.addForce(wall_restraint_force)
 
 # make the integrator
 report_timing(system, coords, "Run time for this step:")

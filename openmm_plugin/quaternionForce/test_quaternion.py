@@ -16,8 +16,7 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 
-sys.path.append('../../openmm_pytorch')
-from BFEE2_CV import RMSD_CV, Translation_CV
+
 from Quaternionplugin import QuaternionForce
 
 DEVICEINDEX = '2'
@@ -30,7 +29,7 @@ def getCV(system, positions, description, groups):
     """Report timing on all available platforms."""
     timestep = 2.0*unit.femtoseconds
     nsteps = 10
-    for platform_name in ['CPU']:
+    for platform_name in ['CUDA']:
         platform = omm.Platform.getPlatformByName(platform_name)
 
         integrator = omm.LangevinIntegrator(300*unit.kelvin, 1.0/unit.picoseconds, timestep)
@@ -46,7 +45,7 @@ def getCV(system, positions, description, groups):
             state = context.getState(getForces=True, getEnergy=True,
                                      getPositions=True, getVelocities=True,
                                      groups={groups})
-            q = state.getPotentialEnergy().value_in_unit(unit.kilocalories_per_mole)
+            q = state.getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole)
             print(f"{nsteps*i}\t{q}")
         final_time = time.time()
         elapsed_time = (final_time - initial_time) * unit.seconds
@@ -118,19 +117,10 @@ ligand_idxs = mdj.load_pdb(pdb_file).topology.select('resname "MOL" and type!="H
 protein_idxs = mdj.load_pdb(pdb_file).topology.select('protein and type!="H"')
 
 # add RMSD Pluging Force
-qforce = QuaternionForce(coords, protein_idxs.tolist())
+qforce = QuaternionForce(coords, protein_idxs.tolist(), 0)
 qforce_qroup = 30
 qforce.setForceGroup(qforce_qroup)
 system.addForce(qforce)
-
-# wall_energy_exp = "0.5*k*(min(0,RMSD-lowerwall)^2+max(0,RMSD-upperwall)^2)"
-# wall_restraint_force = omm.CustomCVForce(wall_energy_exp)
-# wall_restraint_force.addCollectiveVariable('RMSD',  rmsd_plugin)
-# wall_restraint_force.addGlobalParameter('lowerwall', 0.0*unit.nanometer)
-# wall_restraint_force.addGlobalParameter('upperwall', 0.3*unit.nanometer)
-# wall_restraint_force.addGlobalParameter("k", 2000*unit.kilojoule_per_mole/unit.nanometer**2)
-# system.addForce(wall_restraint_force)
-
 
 # make the integrator
 getCV(system, coords, "Run time for this step:", qforce_qroup)
