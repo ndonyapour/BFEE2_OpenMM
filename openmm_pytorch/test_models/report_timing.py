@@ -140,13 +140,13 @@ rmsd_cv = omm.RMSDForce(ligand_ref_pos, ligand_idxs)
 # wall_restraint_force.addGlobalParameter('upperwall', 0.3)
 # wall_restraint_force.addGlobalParameter("k", 1000)
 
-
+system, variables, temperature, biasFactor, height, frequency, saveFrequency=None, biasDir=None
 rmsd_bias = omma.metadynamics.BiasVariable(rmsd_cv, 0.0, 5.0, 0.05, False, gridWidth=100)
 meta = omma.metadynamics.Metadynamics(system, [rmsd_bias], 
                                         TEMPERATURE,
-                                        10,
+                                        biasFactor=10,
                                         1.5 * unit.kilojoules_per_mole,
-                                        1000,
+                                        500,
                                         biasDir=".",
                                         saveFrequency=1000)
 

@@ -123,7 +123,7 @@ system.addForce(wall_restraint_force)
 # Built-in RMSD
 # rmsd_builtin = omm.RMSDForce(coords, ligand_idxs.tolist())
 
-# wall_energy_exp = "0.5*k*(min(0,r-lowerwall)^2+max(0,r-upperwall)^2)"
+# wall_energy_exp = "0.5*k*(min(0,RMSD-lowerwall)^2+max(0,RMSD-upperwall)^2)"
 # wall_restraint_force = omm.CustomCVForce(wall_energy_exp)
 # #wall_restraint_force.addCollectiveVariable('RMSD',  rmsd_builtin)
 # wall_restraint_force.addGlobalParameter('lowerwall', 0.0*unit.nanometer)
