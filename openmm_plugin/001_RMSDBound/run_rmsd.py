@@ -16,11 +16,13 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 
+from metadynamics import *
+
 
 #from BFEE2_CV import RMSD_CV, Translation_CV
 sys.path.append('../')
 from  BFEE2_CV import RMSD_wall, Translation_restraint, Orientaion_restraint
-from Quaternionplugin import QuaternionForce
+
 
 # from wepy, to restart a simulation
 GET_STATE_KWARG_DEFAULTS = (('getPositions', True),
@@ -42,7 +44,7 @@ PRESSURE = 1.0 * unit.atmosphere
 VOLUME_MOVE_FREQ = 50
 
 # reporter
-NUM_STEPS = 10000000 # 500000 = 1ns
+NUM_STEPS = 500000 #10000000 # 500000 = 1ns
 DCD_REPORT_STEPS = 5000
 CHECKPOINT_REPORTER_STEPS =  5000
 LOG_REPORTER_STEPS = 500
@@ -99,15 +101,19 @@ rmsd_harmonic_wall = RMSD_wall(ref_pos, ligand_idxs,
 
 # run metadynamics on rmsd
 
-system.add(rmsd_harmonic_wall)
+system.addForce(rmsd_harmonic_wall)
 
 rmsd_cv = omm.RMSDForce(ref_pos, ligand_idxs)
-rmsd_bias = omma.metadynamics.BiasVariable(rmsd_cv, minValue=0.0*unit.nanometer, maxValue=0.3*unit.nanometer, 
-                                           biasWidth=0.02*unit.nanometer, periodic=False, gridWidth=100)
 
-meta = omma.metadynamics.Metadynamics(system, [rmsd_bias], 
+#omma.metadynamics.BiasVariable using modefied version from biosimspace
+sigma_rmsd = 0.01
+rmsd_bias = BiasVariable(rmsd_cv, minValue=0.0*unit.nanometer, maxValue=0.3*unit.nanometer, 
+                                           biasWidth=sigma_rmsd*unit.nanometer, periodic=False, gridWidth=100)
+
+bias = 20
+meta = Metadynamics(system, [rmsd_bias], 
                                         TEMPERATURE,
-                                        biasFactor=20,
+                                        biasFactor=bias,
                                         height=2*unit.kilojoules_per_mole,
                                         frequency=500,
                                         saveFrequency=5000,
@@ -117,11 +123,12 @@ dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanomete
 translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
                                  force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2)
 system.addForce(translation_res)
-
-#add the quaternion 
 q_centers = [1, 0, 0, 0]
+q_cvs = []
 for i in range(4):
     q_restraint = Orientaion_restraint(ref_pos, protein_idxs.tolist(), i, center=q_centers[0]*unit.nanometer)
+    #q_restraint.setForceGroup(qforce_qroup)
+    q_cvs.append(q_restraint)
     system.addForce(q_restraint)
 
 # make the integrator
@@ -132,57 +139,89 @@ prop = dict(Precision=PRECISION)
 
 simulation = omma.Simulation(prmtop.topology, system, integrator, platform, prop)
 if osp.exists(STAR_CHECKPOINT):
-    print("Start from checkpoint")
+    print(f"Start Simulation from checkpoint {STAR_CHECKPOINT}")
     simulation.loadCheckpoint(STAR_CHECKPOINT)
 else:
     print("Can not find the checkpoint")
 #simulation.context.setPositions(ref_pos)
 
-simulation.step(20)
-print("Done")
-
-# simulation.reporters.append(mdj.reporters.DCDReporter(osp.join(OUTPUTS_PATH, SIM_TRAJ),
-#                                                                 DCD_REPORT_STEPS,
-#                                                                 atomSubset=protein_ligand_idxs))
+simulation.reporters.append(mdj.reporters.DCDReporter(osp.join(OUTPUTS_PATH, SIM_TRAJ),
+                                                                DCD_REPORT_STEPS,
+                                                                atomSubset=protein_ligand_idxs))
 
 
 
-# simulation.reporters.append(omma.CheckpointReporter(checkpoint_path,
-#                                                     CHECKPOINT_REPORTER_STEPS))
+simulation.reporters.append(omma.CheckpointReporter(checkpoint_path,
+                                                    CHECKPOINT_REPORTER_STEPS))
 
-# simulation.reporters.append(
-#     omma.StateDataReporter(
-#         LOG_FILE,
-#         LOG_REPORTER_STEPS,
-#         step=True,
-#         time=True,
-#         potentialEnergy=True,
-#         kineticEnergy=True,
-#         totalEnergy=True,
-#         volume=True,
-#         temperature=True,
-#         totalSteps=True,
-#         separator=" ",
-#     )
-# )
-# print("Start Simulation")
-# start_time = time.time()
-# simulation.step(NUM_STEPS)
-# end_time = time.time()
-# print("End Simulation")
-# print(f"Run time = {np.round(end_time - start_time, 3)}s")
-# simulation_time = round((STEP_SIZE * NUM_STEPS).value_in_unit(unit.nanoseconds),
-#                            2)
-# print(f"Simulation time: {simulation_time}ns")
-# simulation.saveCheckpoint(osp.join(OUTPUTS_PATH, CHECKPOINT_LAST))
+simulation.reporters.append(
+    omma.StateDataReporter(
+        LOG_FILE,
+        LOG_REPORTER_STEPS,
+        step=True,
+        time=True,
+        potentialEnergy=True,
+        kineticEnergy=True,
+        totalEnergy=True,
+        volume=True,
+        temperature=True,
+        totalSteps=True,
+        separator=" ",
+    )
+)
 
-# # save final state and system
-# get_state_kwargs = dict(GET_STATE_KWARG_DEFAULTS)
-# omm_state = simulation.context.getState(**get_state_kwargs)
-# # save the pkl files to the inputs dir
-# with open(osp.join(OUTPUTS_PATH, SYSTEM_FILE), 'wb') as wfile:
-#     pkl.dump(system, wfile)
+# Create PLUMED compatible HILLS file.
+file = open('HILLS','w')
+file.write('#! FIELDS time rmsd sigma_rmsd height biasf\n')
+file.write('#! SET multivariate false\n')
+file.write('#! SET kerneltype gaussian\n')
 
-# with open(osp.join(OUTPUTS_PATH, OMM_STATE_FILE), 'wb') as wfile:
-#     pkl.dump(omm_state, wfile)
-# print('Done making pkls. Check inputs dir for them!')
+# Initialise the collective variable array.
+current_cvs = list(meta.getCollectiveVariables(simulation))
+for idx, q in enumerate(q_cvs):
+    # print(idx, q.getCollectiveVariableValues(simulation.context)[0], " ")
+    current_cvs.append(q.getCollectiveVariableValues(simulation.context)[0])
+    
+hill_hight = meta.getHillHeight(simulation)
+colvar_array = np.array([current_cvs])
+
+rtime = 0
+write_line = f'{rtime:15} {colvar_array[0][0]:20.16f}          {sigma_rmsd} {meta.getHillHeight(simulation):20.16f}          {bias}\n'
+file.write(write_line)
+
+# Run the simulation
+report_step = 5000
+start_time = time.time()
+
+for x in range(0, int(NUM_STEPS/report_step)):
+    meta.step(simulation, report_step)
+    current_cvs = list(meta.getCollectiveVariables(simulation))
+    for idx, q in enumerate(q_cvs):
+        current_cvs.append(q.getCollectiveVariableValues(simulation.context)[0])
+    
+    colvar_array = np.append(colvar_array, [current_cvs], axis=0)
+    np.save('COLVAR.npy', colvar_array)
+    line = colvar_array[x+1]
+    rtime = int((x+1) * 0.002*report_step)
+    write_line = f'{rtime:15} {line[0]:20.16f}          {sigma_rmsd} {meta.getHillHeight(simulation):20.16f}          {bias}\n'
+    file.write(write_line)
+    file.flush()
+
+end_time = time.time()
+print("End Simulation")
+print(f"Run time = {np.round(end_time - start_time, 3)}s")
+simulation_time = round((STEP_SIZE * NUM_STEPS).value_in_unit(unit.nanoseconds),
+                           2)
+print(f"Simulation time: {simulation_time}ns")
+simulation.saveCheckpoint(osp.join(OUTPUTS_PATH, CHECKPOINT_LAST))
+
+# save final state and system
+get_state_kwargs = dict(GET_STATE_KWARG_DEFAULTS)
+omm_state = simulation.context.getState(**get_state_kwargs)
+# save the pkl files to the inputs dir
+with open(osp.join(OUTPUTS_PATH, SYSTEM_FILE), 'wb') as wfile:
+    pkl.dump(system, wfile)
+
+with open(osp.join(OUTPUTS_PATH, OMM_STATE_FILE), 'wb') as wfile:
+    pkl.dump(omm_state, wfile)
+print('Done making pkls. Check inputs dir for them!')
