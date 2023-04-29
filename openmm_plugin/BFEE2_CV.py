@@ -20,14 +20,15 @@ def RMSD_wall(ref_pos, atom_idxs, lowerwall=0.0, upperwall=0.3, force_const=unit
 def Translation_restraint(atom_idxs, dummy_atom_pos, force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2):
 
     # 1/2 * k * distance(com-dummy_atom)^2
-    translation_restraint = omm.CustomCentroidBondForce(1, "0.5*k*((x1-dx)^2+(y1-dy)^2+(z1-dz)^2)")
+    translation_restraint = omm.CustomCentroidBondForce(1, "0.5*kt*((x1-dx)^2+(y1-dy)^2+(z1-dz)^2)")
     #translation_restraint.addCollectiveVariable('translation', translation_restraint)
     translation_restraint.addGroup(atom_idxs)
     translation_restraint.addGlobalParameter("dx", dummy_atom_pos[0])
     translation_restraint.addGlobalParameter("dy", dummy_atom_pos[1])
     translation_restraint.addGlobalParameter("dz", dummy_atom_pos[2])
-    translation_restraint.addGlobalParameter("k", force_const)
-    translation_restraint.setUsesPeriodicBoundaryConditions(True)
+    translation_restraint.addGlobalParameter("kt", force_const)
+    translation_restraint.addBond([0], [])
+    #translation_restraint.setUsesPeriodicBoundaryConditions(True)
     return translation_restraint
 
 def Orientaion_restraint(ref_pos, atom_idxs, qidx, center=0, force_const=8368*unit.kilojoule_per_mole/unit.nanometer**2):
@@ -43,5 +44,12 @@ def Orientaion_restraint(ref_pos, atom_idxs, qidx, center=0, force_const=8368*un
     harmonic_restraint_force.addGlobalParameter(k, force_const)
     return harmonic_restraint_force
 
-
+    # q0 = QuaternionForce(ref_pos, atom_idxs, 0)
+    # q1 = QuaternionForce(ref_pos, atom_idxs, 1)
+    # q2 = QuaternionForce(ref_pos, atom_idxs, 2)
+    # q3 = QuaternionForce(ref_pos, atom_idxs, 2)
+    # k = f'kq{labels[qidx]}'
+    # q0 = f'q0{labels[qidx]}'
+    # q = f'q{labels[qidx]}'
+    # harmonic_energy_exp = f"0.5*kq0(q0)"
 

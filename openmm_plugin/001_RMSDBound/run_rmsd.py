@@ -44,8 +44,8 @@ PRESSURE = 1.0 * unit.atmosphere
 VOLUME_MOVE_FREQ = 50
 
 # reporter
-NUM_STEPS = 500000 #10000000 # 500000 = 1ns
-DCD_REPORT_STEPS = 5000
+NUM_STEPS = 10000000 # 500000 = 1ns
+DCD_REPORT_STEPS = 100
 CHECKPOINT_REPORTER_STEPS =  5000
 LOG_REPORTER_STEPS = 500
 OUTPUTS_PATH = osp.realpath(f'outputs')
@@ -93,15 +93,12 @@ system.addForce(barostat)
 # Define CVs and restraint forces
 
 # RMSD CV
-
 rmsd_harmonic_wall = RMSD_wall(ref_pos, ligand_idxs,
                             lowerwall=0.0*unit.nanometer,
                             upperwall=0.3*unit.nanometer,
                             force_const=2000*unit.kilojoule_per_mole/unit.nanometer**2)
-
-# run metadynamics on rmsd
-
 system.addForce(rmsd_harmonic_wall)
+# run metadynamics on rmsd
 
 rmsd_cv = omm.RMSDForce(ref_pos, ligand_idxs)
 
@@ -110,32 +107,37 @@ sigma_rmsd = 0.01
 rmsd_bias = BiasVariable(rmsd_cv, minValue=0.0*unit.nanometer, maxValue=0.3*unit.nanometer, 
                                            biasWidth=sigma_rmsd*unit.nanometer, periodic=False, gridWidth=100)
 
-bias = 20
+bias = 10
 meta = Metadynamics(system, [rmsd_bias], 
                                         TEMPERATURE,
                                         biasFactor=bias,
-                                        height=2*unit.kilojoules_per_mole,
-                                        frequency=500,
+                                        height=1*unit.kilojoules_per_mole,
+                                        frequency=1000,
                                         saveFrequency=5000,
                                         biasDir=".")
 # Translation restraint on protein
-dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers
+dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers 
 translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
-                                 force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2)
+                                 force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2) #41840
 system.addForce(translation_res)
+
+# Orientaion restraint
 q_centers = [1, 0, 0, 0]
 q_cvs = []
 for i in range(4):
-    q_restraint = Orientaion_restraint(ref_pos, protein_idxs.tolist(), i, center=q_centers[0]*unit.nanometer)
-    #q_restraint.setForceGroup(qforce_qroup)
-    q_cvs.append(q_restraint)
+    q_restraint = Orientaion_restraint(ref_pos, protein_idxs.tolist(), i, 
+                                       center=q_centers[0]*unit.nanometer, 
+                                       force_const=8368*unit.kilojoule_per_mole/unit.nanometer**2) # 8368
     system.addForce(q_restraint)
-
-# make the integrator
+    q_cvs.append(q_restraint)
+    
 integrator = omm.LangevinIntegrator(TEMPERATURE, FRICTION_COEFFICIENT, STEP_SIZE)
 
 platform = omm.Platform.getPlatformByName(PLATFORM)
 prop = dict(Precision=PRECISION)
+
+for i, f in enumerate(system.getForces()):
+    f.setForceGroup(i)
 
 simulation = omma.Simulation(prmtop.topology, system, integrator, platform, prop)
 if osp.exists(STAR_CHECKPOINT):
@@ -192,36 +194,49 @@ file.write(write_line)
 # Run the simulation
 report_step = 5000
 start_time = time.time()
-
+#force_file = open("forces.txt", 'w')
 for x in range(0, int(NUM_STEPS/report_step)):
     meta.step(simulation, report_step)
     current_cvs = list(meta.getCollectiveVariables(simulation))
     for idx, q in enumerate(q_cvs):
         current_cvs.append(q.getCollectiveVariableValues(simulation.context)[0])
-    
+
+
+    #data = []
+    # for i, f in enumerate(system.getForces()):
+    #     state = simulation.context.getState(getEnergy=True, groups={i})
+    #     data.append(state.getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole))
+    #     #print(f.getName(), state.getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole))
+        
+    #force_file.write("\t".join(str(round(item, 3)) for item in data)+"\n")
+    wall_rmsd = rmsd_harmonic_wall.getCollectiveVariableValues(simulation.context)[0]
+    #print(f"{wall_rmsd} \t {current_cvs[0]}")
+    #print(f"{current_cvs[0]}")
+    rtime = int((x+1) * 0.002*report_step)
+    write_line = f'{rtime:15} {current_cvs[0]:20.16f}          {sigma_rmsd} {meta.getHillHeight(simulation):20.16f}          {bias}\n'
     colvar_array = np.append(colvar_array, [current_cvs], axis=0)
     np.save('COLVAR.npy', colvar_array)
     line = colvar_array[x+1]
-    rtime = int((x+1) * 0.002*report_step)
-    write_line = f'{rtime:15} {line[0]:20.16f}          {sigma_rmsd} {meta.getHillHeight(simulation):20.16f}          {bias}\n'
+   
+
     file.write(write_line)
     file.flush()
 
-end_time = time.time()
-print("End Simulation")
-print(f"Run time = {np.round(end_time - start_time, 3)}s")
-simulation_time = round((STEP_SIZE * NUM_STEPS).value_in_unit(unit.nanoseconds),
-                           2)
-print(f"Simulation time: {simulation_time}ns")
-simulation.saveCheckpoint(osp.join(OUTPUTS_PATH, CHECKPOINT_LAST))
+# end_time = time.time()
+# print("End Simulation")
+# print(f"Run time = {np.round(end_time - start_time, 3)}s")
+# simulation_time = round((STEP_SIZE * NUM_STEPS).value_in_unit(unit.nanoseconds),
+#                            2)
+# print(f"Simulation time: {simulation_time}ns")
+# simulation.saveCheckpoint(osp.join(OUTPUTS_PATH, CHECKPOINT_LAST))
 
-# save final state and system
-get_state_kwargs = dict(GET_STATE_KWARG_DEFAULTS)
-omm_state = simulation.context.getState(**get_state_kwargs)
-# save the pkl files to the inputs dir
-with open(osp.join(OUTPUTS_PATH, SYSTEM_FILE), 'wb') as wfile:
-    pkl.dump(system, wfile)
+# # save final state and system
+# get_state_kwargs = dict(GET_STATE_KWARG_DEFAULTS)
+# omm_state = simulation.context.getState(**get_state_kwargs)
+# # save the pkl files to the inputs dir
+# with open(osp.join(OUTPUTS_PATH, SYSTEM_FILE), 'wb') as wfile:
+#     pkl.dump(system, wfile)
 
-with open(osp.join(OUTPUTS_PATH, OMM_STATE_FILE), 'wb') as wfile:
-    pkl.dump(omm_state, wfile)
-print('Done making pkls. Check inputs dir for them!')
+# with open(osp.join(OUTPUTS_PATH, OMM_STATE_FILE), 'wb') as wfile:
+#     pkl.dump(omm_state, wfile)
+# print('Done making pkls. Check inputs dir for them!')
