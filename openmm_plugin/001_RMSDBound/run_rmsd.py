@@ -21,7 +21,7 @@ from metadynamics import *
 
 #from BFEE2_CV import RMSD_CV, Translation_CV
 sys.path.append('../')
-from  BFEE2_CV import RMSD_wall, Translation_restraint, Orientaion_restraint
+from  BFEE2_CV import RMSD_wall, Translation_restraint, q_restraint, Orientaion_restraint
 
 
 # from wepy, to restart a simulation
@@ -92,13 +92,8 @@ system.addForce(barostat)
 
 # Define CVs and restraint forces
 
-# RMSD CV
-rmsd_harmonic_wall = RMSD_wall(ref_pos, ligand_idxs,
-                            lowerwall=0.0*unit.nanometer,
-                            upperwall=0.3*unit.nanometer,
-                            force_const=2000*unit.kilojoule_per_mole/unit.nanometer**2)
-system.addForce(rmsd_harmonic_wall)
-# run metadynamics on rmsd
+
+
 
 # Translation restraint on protein
 dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers 
@@ -108,35 +103,39 @@ system.addForce(translation_res)
 
 # Orientaion restraint
 q_centers = [1.0, 0.0, 0.0, 0.0]
-q_cvs = []
-for i in range(4):
-    q_restraint = Orientaion_restraint(ref_pos, protein_idxs.tolist(), i, 
-                                       center=q_centers[0]*unit.nanometer, 
-                                       force_const=8368*unit.kilojoule_per_mole/unit.nanometer**2) # 8368
-    system.addForce(q_restraint)
-    q_cvs.append(q_restraint)
+q_force_consts = [8368*unit.kilojoule_per_mole/unit.nanometer**2 for _ in range(4)]
+orientaion_res = Orientaion_restraint(ref_pos, protein_idxs.tolist(), q_centers, q_force_consts)
+system.addForce(orientaion_res)
+# q_cvs = []
+# for i in range(4):
+#     q_restraint = Orientaion_restraint(ref_pos, protein_idxs.tolist(), i, 
+#                                        center=q_centers[0]*unit.nanometer, 
+#                                        force_const=8368*unit.kilojoule_per_mole/unit.nanometer**2) # 8368
+#     system.addForce(q_restraint)
+#     q_cvs.append(q_restraint)
 
+# Metadynamics on RMSD
 rmsd_cv = omm.RMSDForce(ref_pos, ligand_idxs)
+
+# RMSD CV
+rmsd_harmonic_wall = RMSD_wall(ref_pos, ligand_idxs,
+                            lowerwall=0.0*unit.nanometer,
+                            upperwall=0.3*unit.nanometer,
+                            force_const=2000*unit.kilojoule_per_mole/unit.nanometer**2)
+system.addForce(rmsd_harmonic_wall)
 
 #omma.metadynamics.BiasVariable using modefied version from biosimspace
 sigma_rmsd = 0.01
-# ligand_idxs = mdj.load_pdb(pdb_file).topology.select('resname "MOL" and type!="H"')
-# protein_idxs = mdj.load_pdb(pdb_file).topology.select('protein and type!="H"')
-
-# r = omm.CustomCentroidBondForce(2, 'distance(g1,g2)')
-# r.addGroup(ligand_idxs)
-# r.addGroup(protein_idxs)
-# r.addBond([0, 1], [])
-rmsd_bias = BiasVariable(rmsd_cv, minValue=0.0*unit.nanometer, maxValue=0.3*unit.nanometer, 
-                                           biasWidth=sigma_rmsd*unit.nanometer, periodic=False, gridWidth=150)
+rmsd_bias = BiasVariable(rmsd_cv, minValue=0.0*unit.nanometer, maxValue=0.4*unit.nanometer, 
+                                           biasWidth=sigma_rmsd*unit.nanometer, periodic=False, gridWidth=400)
 
 bias = 20.0
 meta = Metadynamics(system, [rmsd_bias], 
                                         TEMPERATURE,
                                         biasFactor=bias,
-                                        height=2*unit.kilojoules_per_mole,
-                                        frequency=1000,
-                                        saveFrequency=1000,
+                                        height=0.75*unit.kilojoules_per_mole,
+                                        frequency=500,
+                                        saveFrequency=500,
                                         biasDir=".")
 integrator = omm.LangevinIntegrator(TEMPERATURE, FRICTION_COEFFICIENT, STEP_SIZE)
 
@@ -187,9 +186,13 @@ file.write('#! SET kerneltype gaussian\n')
 
 # Initialise the collective variable array.
 current_cvs = list(meta.getCollectiveVariables(simulation))
-for idx, q in enumerate(q_cvs):
-    # print(idx, q.getCollectiveVariableValues(simulation.context)[0], " ")
-    current_cvs.append(q.getCollectiveVariableValues(simulation.context)[0])
+current_cvs.extend(orientaion_res.getCollectiveVariableValues(simulation.context))
+# import ipdb 
+# ipdb.set_trace()
+# for idx, q in enumerate(q_cvs):
+#     # print(idx, q.getCollectiveVariableValues(simulation.context)[0], " ")
+#     current_cvs.append(q.getCollectiveVariableValues(simulation.context)[0])
+
     
 #hill_hight = meta.getHillHeight(simulation)
 colvar_array = np.array([current_cvs])
@@ -200,15 +203,16 @@ file.write(write_line)
 
 # Run the simulation
 #NUM_STEPS = 5
-report_step = 5000
+report_step = 500
 start_time = time.time()
 #forces_file = open("biases.dat", 'w')
 forces = []
 for x in range(0, int(NUM_STEPS/report_step)):
     meta.step(simulation, report_step)
     current_cvs = list(meta.getCollectiveVariables(simulation))
-    for idx, q in enumerate(q_cvs):
-        current_cvs.append(q.getCollectiveVariableValues(simulation.context)[0])
+    current_cvs.extend(orientaion_res.getCollectiveVariableValues(simulation.context))
+    # for idx, q in enumerate(q_cvs):
+    #     current_cvs.append(q.getCollectiveVariableValues(simulation.context)[0])
     data = []
     # for i, f in enumerate(system.getForces()):
     #     state = simulation.context.getState(getEnergy=True, getForces=True, groups={i})
