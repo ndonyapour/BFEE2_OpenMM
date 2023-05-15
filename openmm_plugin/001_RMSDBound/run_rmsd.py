@@ -133,7 +133,7 @@ bias = 20.0
 meta = Metadynamics(system, [rmsd_bias], 
                                         TEMPERATURE,
                                         biasFactor=bias,
-                                        height=0.75*unit.kilojoules_per_mole,
+                                        height=0.5*unit.kilojoules_per_mole,
                                         frequency=500,
                                         saveFrequency=500,
                                         biasDir=".")
