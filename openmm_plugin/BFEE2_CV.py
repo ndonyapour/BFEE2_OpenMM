@@ -44,15 +44,6 @@ def q_restraint(ref_pos, atom_idxs, qidx, center=0, force_const=8368*unit.kilojo
     harmonic_restraint_force.addGlobalParameter(k, force_const)
     return harmonic_restraint_force
 
-    # q0 = QuaternionForce(ref_pos, atom_idxs, 0)
-    # q1 = QuaternionForce(ref_pos, atom_idxs, 1)
-    # q2 = QuaternionForce(ref_pos, atom_idxs, 2)
-    # q3 = QuaternionForce(ref_pos, atom_idxs, 2)
-    # k = f'kq{labels[qidx]}'
-    # q0 = f'q0{labels[qidx]}'
-    # q = f'q{labels[qidx]}'
-    # harmonic_energy_exp = f"0.5*kq0(q0)"
-
 def Orientaion_restraint(ref_pos, atom_idxs, centers, force_consts):
     labels = ['x', 'y', 'z', 'w']
     
@@ -63,7 +54,7 @@ def Orientaion_restraint(ref_pos, atom_idxs, centers, force_consts):
         q = f'q{labels[qidx]}'
         harmonic_energy_exps.append(f"0.5*{k}*({q}-{q0})^2")
         # print(harmonic_energy_exps)
-    # q_cv = QuaternionForce(ref_pos, atom_idxs, qidx)
+   
     harmonic_energy_exp = "+".join(harmonic_energy_exps)
     harmonic_restraint_force = omm.CustomCVForce(harmonic_energy_exp)
     for qidx in range(len(centers)):
