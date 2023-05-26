@@ -30,10 +30,10 @@ def EulerAngle_wall(ref_pos, atom_idxs, fitatom_idxs, angle="Theta", lowerwall=-
 
 def EulerAngle_harmonic(ref_pos, atom_idxs, fitatom_idxs, center, angle="Theta", force_const=4184):
     eulerangle_cv = EuleranglesForce(ref_pos, atom_idxs, fitatom_idxs, angle)
-    energy_exp = f"0.5*kheuler{angle}*(angle-anglecenter)^2"
+    energy_exp = f"0.5*kheuler{angle}*(angle-anglecenter{angle})^2"
     restraint_force = omm.CustomCVForce(energy_exp)
     restraint_force.addCollectiveVariable("angle",  eulerangle_cv)
-    restraint_force.addGlobalParameter("anglecenter", center)
+    restraint_force.addGlobalParameter(f"anglecenter{angle}", center)
     restraint_force.addGlobalParameter(f"kheuler{angle}", force_const)
     return restraint_force
 
