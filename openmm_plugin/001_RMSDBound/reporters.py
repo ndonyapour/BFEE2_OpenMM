@@ -34,46 +34,10 @@ class HILLSReporter(object):
         if self._BIAS:
             self.h5.create_dataset('bias', (0, 0, 0), maxshape=(None, MAX_GRIDS, MAX_GRIDS))
 
-    # Modified from openmm hdf5.py script
-    def _extend_traj_field(self, field_name, field_data):
-        """Add one new frames worth of data to the end of an existing
-        contiguous (non-sparse)trajectory field.
-
-        Parameters
-        ----------
-
-        field_name : str
-            Field name
-        field_data : numpy.array
-            The frames of data to add.
-        """
-
-        field = self.h5[field_name]
-
-        # of datase new frames
-        n_new_frames = 1
-
-        # check the field to make sure it is not empty
-        if all([i == 0 for i in field.shape]):
-
-            feature_dims = field_data.shape
-            field.resize((n_new_frames, *feature_dims))
-
-            # set the new data to this
-            field[0:, ...] = field_data
-
-        else:
-            # append to the dataset on the first dimension, keeping the
-            # others the same, these must be feature vectors and therefore
-            # must exist
-            field.resize((field.shape[0] + n_new_frames, *field_data.shape))
-            # add the new data
-            field[-n_new_frames:, ...] = field_data
-
     def describeNextReport(self, simulation):
 
         steps = self._reportInterval - simulation.currentStep % self._reportInterval
-        return (steps, self._coordinates, self._velosities, self._forces, self._potentialEnerg)
+        return (steps)
 
     def report(self, simulation, state):
 
