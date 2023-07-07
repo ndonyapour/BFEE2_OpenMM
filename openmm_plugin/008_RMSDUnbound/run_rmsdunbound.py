@@ -9,6 +9,7 @@ import pickle as pkl
 
 import openmm.app as omma
 import openmm as omm
+from openmmplumed import PlumedForce
 import simtk.unit as unit
 
 
@@ -17,9 +18,9 @@ import parmed as pmd
 import time
 
 sys.path.append('../utils')
-from BFEE2_CV import *
-from Euleranglesplugin import EuleranglesForce
+from BFEE2_CV import RMSD_wall
 from reporters import HILLSReporter, COLVARReporter
+
 
 # from wepy, to restart a simulation
 GET_STATE_KWARG_DEFAULTS = (('getPositions', True),
@@ -41,12 +42,11 @@ PRESSURE = 1.0 * unit.atmosphere
 VOLUME_MOVE_FREQ = 50
 
 # reporter
-NUM_STEPS = 5000000 # 500000 = 1ns   #5000000
-REPORTER_STEPS = 1000
+NUM_STEPS = 10000000 # 500000 = 1ns
 DCD_REPORTER_STEPSS = 50000
-HILLS_REPORTER_STEPS = 1000
+HILLS_REPORTER_STEPS = 500
 COLVAR_REPORTER_STEPS = 5000
-CHECKPOINT_REPORTER_STEPS = 5000
+CHECKPOINT_REPORTER_STEPS =  5000
 LOG_REPORTER_STEPS = 50000
 OUTPUTS_PATH = osp.realpath(f'outputs')
 SIM_TRAJ = 'traj.dcd'
@@ -55,104 +55,82 @@ CHECKPOINT_LAST = 'checkpoint_last.chk'
 SYSTEM_FILE = 'system.pkl'
 OMM_STATE_FILE = 'state.pkl'
 LOG_FILE = 'log'
-STAR_CHECKPOINT = '../../openmm_plumed/000_eq/outputs/checkpoint_last.chk'
+
 
 #
 if not osp.exists(OUTPUTS_PATH):
     os.makedirs(OUTPUTS_PATH)
-
 # the inputs directory and files we need
-inputs_dir = osp.realpath(f'../../openmm_plumed/inputs')
+inputs_dir = osp.realpath(f'./inputs')
+prmfile = osp.join(inputs_dir, 'ligandOnly.prmtop')
+STAR_CHECKPOINT = osp.join('./outputs_eq','checkpoint_last.chk')
 
-prmfile = osp.join(inputs_dir, 'complex.prmtop')
 prmtop = omma.amberprmtopfile.AmberPrmtopFile(prmfile)
 
 checkpoint_path = osp.join(OUTPUTS_PATH, CHECKPOINT) # modify based on the simulation
-
-pdb_file = osp.join(inputs_dir, 'complex_bfee2.pdb')
+pdb_file = osp.join(inputs_dir, 'ligandOnly.pdb')
 pdb = mdj.load_pdb(pdb_file)
-
-
 # protein and type!="H"'
-protein_ligand_idxs = pdb.topology.select('protein or resname "MOL"')
-ligand_idxs = pdb.topology.select('resname "MOL" and type!="H"')
-protein_idxs = pdb.topology.select('protein and type!="H"')
-ref_pos = omma.pdbfile.PDBFile(pdb_file).getPositions()
+protein_ligand_idxs = pdb.topology.select('resname "MOL"')
 
+# add disulfide bonds to the topology
+#prmtop.topology.createDisulfideBonds(coords.getPositions())
 
+# build the system
 system = prmtop.createSystem(nonbondedMethod=omma.PME,
                             nonbondedCutoff=1*unit.nanometer,
                             constraints=omma.HBonds)
 
+# The cpptraj doesn't set the box vectors correctly. set the box vectors
+a = unit.Quantity((81.69460 * unit.angstrom, 0.0 * unit.angstrom, 0.0 * unit.angstrom))
+b = unit.Quantity((0.0 * unit.angstrom, 81.9153000 * unit.angstrom, 0.0 * unit.angstrom))
+c = unit.Quantity((0.0 * unit.angstrom, 0.0 * unit.angstrom, 81.8666 * unit.angstrom))
+system.setDefaultPeriodicBoxVectors(a, b, c)
 
 # atm, 300 K, with volume move attempts every 50 steps
 barostat = omm.MonteCarloBarostat(PRESSURE, TEMPERATURE, VOLUME_MOVE_FREQ)
 # # add it as a "Force" to the system
 system.addForce(barostat)
 
+ligand_idxs = pdb.topology.select('resname "MOL" and type!="H"')
+protein_idxs = pdb.topology.select('protein and type!="H"')
+ref_pos = omma.pdbfile.PDBFile(pdb_file).getPositions()
 
-# Translation restraint on protein
-dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers
-translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
-                                 force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2) #41840
-system.addForce(translation_res)
 
-# Orientaion restraint
-q_centers = [1.0, 0.0, 0.0, 0.0]
-q_force_consts = [8368*unit.kilojoule_per_mole/unit.nanometer**2 for _ in range(4)]
-orientaion_res = Orientaion_restraint(ref_pos, protein_idxs.tolist(), q_centers, q_force_consts)
-system.addForce(orientaion_res)
 
-# harmonic restraint on ligand rmsd
-rmsd_res = RMSD_harmonic(ref_pos, ligand_idxs.tolist(), center=0.0*unit.nanometer,
-                         force_const=4184*unit.kilojoule_per_mole/unit.nanometer**2) # 4184
+# RMSD CV
+rmsd_harmonic_wall = RMSD_wall(ref_pos, ligand_idxs,
+                            lowerwall=0.0*unit.nanometer,
+                            upperwall=0.3*unit.nanometer,
+                            force_const=2000*unit.kilojoule_per_mole/unit.nanometer**2)
+system.addForce(rmsd_harmonic_wall)
 
-system.addForce(rmsd_res)
 
-# Euler Theta CV
+# Metadynamics on RMSD
+rmsd_cv = omm.RMSDForce(ref_pos, ligand_idxs)
+sigma_rmsd = 0.01
+rmsd_bias = omma.metadynamics.BiasVariable(rmsd_cv, minValue=0.0*unit.nanometer, maxValue=0.4*unit.nanometer,
+                                           biasWidth=sigma_rmsd*unit.nanometer, periodic=False, gridWidth=400)
 
-# harmonic restraint on Euler theta
-eulertheta_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(),
-                                     protein_idxs.tolist(),
-                                     center=4.57,
-                                     angle="Theta",
-                                     force_const=41.84) # 0.4184
-system.addForce(eulertheta_res)
+bias = 20.0
+meta = omma.metadynamics.Metadynamics(system, [rmsd_bias],
+                                        TEMPERATURE,
+                                        biasFactor=bias,
+                                        height=0.5*unit.kilojoules_per_mole,
+                                        frequency=HILLS_REPORTER_STEPS)
 
-harmonic_wall = EulerAngle_wall(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(),
-                                           angle="Phi",
-                                           lowerwall=-35.0, # fails when passing with units -15.0* unit.degree
-                                           upperwall=5.0,
-                                           force_const=100)#*unit.kilojoule_per_mole/unit.degree**2)
-
-system.addForce(harmonic_wall)
-# using modefied version from biosimspace
-sigma = 0.6
-cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Phi")
-bias = omma.metadynamics.BiasVariable(cv, minValue=-40.0, maxValue=10.0,
-                                      biasWidth=sigma, periodic=False, gridWidth=400)
-bias_factor = 15.0
-meta = omma.metadynamics.Metadynamics(system, [bias],
-                    TEMPERATURE,
-                    biasFactor=bias_factor,
-                    height=0.01*unit.kilojoules_per_mole,
-                    frequency=HILLS_REPORTER_STEPS)
-
+# make the integrator
 integrator = omm.LangevinIntegrator(TEMPERATURE, FRICTION_COEFFICIENT, STEP_SIZE)
 
 platform = omm.Platform.getPlatformByName(PLATFORM)
 prop = dict(Precision=PRECISION)
 
-# for i, f in enumerate(system.getForces()):
-#     f.setForceGroup(i)
-
 simulation = omma.Simulation(prmtop.topology, system, integrator, platform, prop)
 if osp.exists(STAR_CHECKPOINT):
-    print(f"Start Simulation from checkpoint {STAR_CHECKPOINT}")
+    print("Start from checkpoint")
     simulation.loadCheckpoint(STAR_CHECKPOINT)
 else:
-    print("Can not find the checkpoint")
-
+    print("can not find the checkpoint")
 
 simulation.reporters.append(mdj.reporters.DCDReporter(osp.join(OUTPUTS_PATH, SIM_TRAJ),
                                                                 DCD_REPORTER_STEPSS,
@@ -179,11 +157,11 @@ simulation.reporters.append(
 
 simulation.reporters.append(HILLSReporter(meta,
                                           "./",
-                                          sigma,
+                                          sigma_rmsd,
                                           reportInterval=HILLS_REPORTER_STEPS,
-                                          cvname="eulerPhi"))
+                                          cvname="rmsd"))
 simulation.reporters.append(COLVARReporter(meta, './',
-                                           [rmsd_res, eulertheta_res, orientaion_res],
+                                           [rmsd_harmonic_wall],
                                            reportInterval=COLVAR_REPORTER_STEPS))
 
 start_time = time.time()

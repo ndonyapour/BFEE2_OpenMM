@@ -16,11 +16,9 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 
-from metadynamics import *
-
 
 #from BFEE2_CV import RMSD_CV, Translation_CV
-sys.path.append('../')
+sys.path.append('../utils')
 from  BFEE2_CV import EulerAngle_wall, Translation_restraint, Orientaion_restraint, RMSD_harmonic 
 from Euleranglesplugin import EuleranglesForce
 
@@ -112,11 +110,11 @@ system.addForce(eulertheta_harmonic_wall)
 
 sigma_eulerTheta = 0.01
 eulertheta_cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Theta")
-eulertheta_bias = BiasVariable(eulertheta_cv, minValue=-20.0, maxValue=20.0, 
+eulertheta_bias = omma.metadynamics.BiasVariable(eulertheta_cv, minValue=-20.0, maxValue=20.0, 
                                            biasWidth=sigma_eulerTheta, periodic=False, gridWidth=400)
 
 bias = 15.0
-meta = Metadynamics(system, [eulertheta_bias], 
+meta = omma.metadynamics.Metadynamics(system, [eulertheta_bias], 
                     TEMPERATURE,
                     biasFactor=bias,
                     height=0.5*unit.kilojoules_per_mole,

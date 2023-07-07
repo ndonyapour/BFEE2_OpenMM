@@ -16,9 +16,13 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 
+
+
+
+
 sys.path.append('../utils')
 from BFEE2_CV import *
-from Euleranglesplugin import EuleranglesForce
+from Polaranglesplugin import PolaranglesForce
 from reporters import HILLSReporter, COLVARReporter
 
 # from wepy, to restart a simulation
@@ -44,9 +48,9 @@ VOLUME_MOVE_FREQ = 50
 NUM_STEPS = 5000000 # 500000 = 1ns   #5000000
 REPORTER_STEPS = 1000
 DCD_REPORTER_STEPSS = 50000
-HILLS_REPORTER_STEPS = 1000
+HILLS_REPORTER_STEPS = 500
 COLVAR_REPORTER_STEPS = 5000
-CHECKPOINT_REPORTER_STEPS = 5000
+CHECKPOINT_REPORTER_STEPS =  5000
 LOG_REPORTER_STEPS = 50000
 OUTPUTS_PATH = osp.realpath(f'outputs')
 SIM_TRAJ = 'traj.dcd'
@@ -116,26 +120,42 @@ eulertheta_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(),
                                      protein_idxs.tolist(),
                                      center=4.57,
                                      angle="Theta",
-                                     force_const=41.84) # 0.4184
+                                     force_const=0.4184)
 system.addForce(eulertheta_res)
 
-harmonic_wall = EulerAngle_wall(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(),
-                                           angle="Phi",
-                                           lowerwall=-35.0, # fails when passing with units -15.0* unit.degree
-                                           upperwall=5.0,
-                                           force_const=100)#*unit.kilojoule_per_mole/unit.degree**2)
+# harmonic restraint on Euler phi
+eulerphi_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(),
+                                     protein_idxs.tolist(),
+                                     center=-20.24,
+                                     angle="Phi",
+                                     force_const=0.4184)
+system.addForce(eulerphi_res)
+
+# harmonic restraint on Euler psi
+eulerpsi_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(),
+                                     protein_idxs.tolist(),
+                                     center=13.53,
+                                     angle="Psi",
+                                     force_const=0.4184)
+system.addForce(eulerpsi_res)
+
+harmonic_wall = PolarAngle_wall(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(),
+                                           angle="Theta",
+                                           lowerwall=47.0, # fails when passing with units -15.0* unit.degree
+                                           upperwall=87.0,
+                                           force_const=0)#*unit.kilojoule_per_mole/unit.degree**2)
 
 system.addForce(harmonic_wall)
-# using modefied version from biosimspace
-sigma = 0.6
-cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Phi")
-bias = omma.metadynamics.BiasVariable(cv, minValue=-40.0, maxValue=10.0,
+# # using modefied version from biosimspace
+sigma = 0.5
+cv = PolaranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Theta")
+bias = omma.metadynamics.BiasVariable(cv, minValue=42.0, maxValue=93.0,
                                       biasWidth=sigma, periodic=False, gridWidth=400)
 bias_factor = 15.0
 meta = omma.metadynamics.Metadynamics(system, [bias],
                     TEMPERATURE,
                     biasFactor=bias_factor,
-                    height=0.01*unit.kilojoules_per_mole,
+                    height=0.05*unit.kilojoules_per_mole,
                     frequency=HILLS_REPORTER_STEPS)
 
 integrator = omm.LangevinIntegrator(TEMPERATURE, FRICTION_COEFFICIENT, STEP_SIZE)
@@ -181,9 +201,9 @@ simulation.reporters.append(HILLSReporter(meta,
                                           "./",
                                           sigma,
                                           reportInterval=HILLS_REPORTER_STEPS,
-                                          cvname="eulerPhi"))
+                                          cvname="polarTheta"))
 simulation.reporters.append(COLVARReporter(meta, './',
-                                           [rmsd_res, eulertheta_res, orientaion_res],
+                                           [rmsd_res, eulertheta_res, eulerphi_res, eulerpsi_res, orientaion_res],
                                            reportInterval=COLVAR_REPORTER_STEPS))
 
 start_time = time.time()

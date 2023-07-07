@@ -11,14 +11,13 @@ import openmm.app as omma
 import openmm as omm
 import simtk.unit as unit
 
-from metadynamics import *
 import mdtraj as mdj
 import parmed as pmd
 import time
 
-sys.path.append('../')
-from  BFEE2_CV import EulerAngle_wall, Translation_restraint, Orientaion_restraint, RMSD_harmonic
-from Euleranglesplugin import EuleranglesForce
+sys.path.append('../utils')
+from BFEE2_CV import *
+
 
 def report_timing(system, positions, description):
     """Report timing on all available platforms."""
@@ -104,12 +103,12 @@ system = prmtop.createSystem(nonbondedMethod=omma.PME,
 barostat = omm.MonteCarloBarostat(PRESSURE, TEMPERATURE, VOLUME_MOVE_FREQ)
 system.addForce(barostat)
 # Translation restraint on protein
-dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers 
+dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers
 translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
                                  force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2) #41840
 system.addForce(translation_res)
 # Translation restraint on protein
-dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers 
+dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers
 translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
                                  force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2) #41840
 system.addForce(translation_res)
@@ -120,7 +119,7 @@ q_force_consts = [8368*unit.kilojoule_per_mole/unit.nanometer**2 for _ in range(
 orientaion_res = Orientaion_restraint(ref_pos, protein_idxs.tolist(), q_centers, q_force_consts)
 system.addForce(orientaion_res)
 
-# harmonic restraint on ligand rmsd 
+# harmonic restraint on ligand rmsd
 rmsd_res = RMSD_harmonic(ref_pos, ligand_idxs.tolist(), center=0.0*unit.nanometer,
                          force_const=4184*unit.kilojoule_per_mole/unit.nanometer**2) # 4184
 
@@ -140,11 +139,11 @@ system.addForce(eulertheta_harmonic_wall)
 # #omma.metadynamics.BiasVariable using modefied version from biosimspace
 sigma_eulerTheta = 1
 eulertheta_cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Theta")
-eulertheta_bias = BiasVariable(eulertheta_cv, minValue=-20.0, maxValue=20.0, 
+eulertheta_bias = omma.metadynamics.BiasVariable(eulertheta_cv, minValue=-20.0, maxValue=20.0,
                                            biasWidth=sigma_eulerTheta, periodic=False, gridWidth=400)
 
 bias = 15.0
-meta = Metadynamics(system, [eulertheta_bias], 
+meta = omma.metadynamics.Metadynamics(system, [eulertheta_bias],
                     TEMPERATURE,
                     biasFactor=bias,
                     height=0.01*unit.kilojoules_per_mole,

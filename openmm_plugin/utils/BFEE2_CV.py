@@ -4,6 +4,7 @@ import openmm as omm
 import simtk.unit as unit
 from Quaternionplugin import QuaternionForce
 from Euleranglesplugin import EuleranglesForce
+from Polaranglesplugin import PolaranglesForce
 
 def RMSD_wall(ref_pos, atom_idxs, lowerwall=0.0*unit.nanometer, upperwall=0.3*unit.nanometer, force_const=2000*unit.kilojoule_per_mole/unit.nanometer**2):
 
@@ -15,12 +16,13 @@ def RMSD_wall(ref_pos, atom_idxs, lowerwall=0.0*unit.nanometer, upperwall=0.3*un
     wall_restraint_force.addGlobalParameter("lowerwall", lowerwall)
     wall_restraint_force.addGlobalParameter("upperwall", upperwall)
     wall_restraint_force.addGlobalParameter("krmsd", force_const)
-    
+
     return wall_restraint_force
 
 def EulerAngle_wall(ref_pos, atom_idxs, fitatom_idxs, angle="Theta", lowerwall=-15.0, upperwall=15.0, force_const=100*unit.kilojoule_per_mole/unit.degree**2):
     eulerangle_cv = EuleranglesForce(ref_pos, atom_idxs, fitatom_idxs, angle)
     wall_energy_exp = "0.5*keulerangle*(min(0,angle-lowerwall)^2+max(0,angle-upperwall)^2)"
+    #wall_energy_exp = "0.5*keulerangle*(min(0,angle-lowerwall)^2+max(0,angle-upperwall)^2)"
     wall_restraint_force = omm.CustomCVForce(wall_energy_exp)
     wall_restraint_force.addCollectiveVariable("angle",  eulerangle_cv)
     wall_restraint_force.addGlobalParameter("lowerwall", lowerwall)
@@ -32,9 +34,37 @@ def EulerAngle_harmonic(ref_pos, atom_idxs, fitatom_idxs, center, angle="Theta",
     eulerangle_cv = EuleranglesForce(ref_pos, atom_idxs, fitatom_idxs, angle)
     energy_exp = f"0.5*kheuler{angle}*(angle-anglecenter{angle})^2"
     restraint_force = omm.CustomCVForce(energy_exp)
-    restraint_force.addCollectiveVariable("angle",  eulerangle_cv)
+    restraint_force.addCollectiveVariable("angle", eulerangle_cv)
     restraint_force.addGlobalParameter(f"anglecenter{angle}", center)
     restraint_force.addGlobalParameter(f"kheuler{angle}", force_const)
+    return restraint_force
+
+def EulerAngle_harmonic2(ref_pos, atom_idxs, center, angle="Theta", force_const=4184):
+    eulerangle_cv = EuleranglesForce(ref_pos, atom_idxs)
+    energy_exp = f"0.5*kheuler{angle}*(angle-anglecenter{angle})^2"
+    restraint_force = omm.CustomCVForce(energy_exp)
+    restraint_force.addCollectiveVariable("angle", eulerangle_cv)
+    restraint_force.addGlobalParameter(f"anglecenter{angle}", center)
+    restraint_force.addGlobalParameter(f"kheuler{angle}", force_const)
+    return restraint_force
+
+def PolarAngle_wall(ref_pos, atom_idxs, fitatom_idxs, angle="Theta", lowerwall=-15.0, upperwall=15.0, force_const=100*unit.kilojoule_per_mole/unit.degree**2):
+    polarngle_cv = PolaranglesForce(ref_pos, atom_idxs, fitatom_idxs, angle)
+    wall_energy_exp = "0.5*kpolarangle*(min(0,angle-lowerwall)^2+max(0,angle-upperwall)^2)"
+    wall_restraint_force = omm.CustomCVForce(wall_energy_exp)
+    wall_restraint_force.addCollectiveVariable("angle",  polarngle_cv)
+    wall_restraint_force.addGlobalParameter("lowerwall", lowerwall)
+    wall_restraint_force.addGlobalParameter("upperwall", upperwall)
+    wall_restraint_force.addGlobalParameter("kpolarangle", force_const)
+    return wall_restraint_force
+
+def PolarAngle_harmonic(ref_pos, atom_idxs, fitatom_idxs, center, angle="Theta", force_const=4184):
+    polarngle_cv = PolaranglesForce(ref_pos, atom_idxs, fitatom_idxs, angle)
+    energy_exp = f"0.5*khpolar{angle}*(angle-polaranglecenter{angle})^2"
+    restraint_force = omm.CustomCVForce(energy_exp)
+    restraint_force.addCollectiveVariable("angle", polarngle_cv)
+    restraint_force.addGlobalParameter(f"polaranglecenter{angle}", center)
+    restraint_force.addGlobalParameter(f"khpolar{angle}", force_const)
     return restraint_force
 
 def RMSD_harmonic(ref_pos, atom_idxs, center, force_const=4184*unit.kilojoule_per_mole/unit.nanometer**2):
@@ -46,7 +76,7 @@ def RMSD_harmonic(ref_pos, atom_idxs, center, force_const=4184*unit.kilojoule_pe
     restraint_force.addGlobalParameter("khrmsd", force_const)
 
     return restraint_force
-    
+
 def Translation_restraint(atom_idxs, dummy_atom_pos, force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2):
 
     # 1/2 * k * distance(com-dummy_atom)^2
@@ -76,7 +106,7 @@ def q_restraint(ref_pos, atom_idxs, qidx, center=0, force_const=8368*unit.kilojo
 
 def Orientaion_restraint(ref_pos, atom_idxs, centers, force_consts):
     labels = ['x', 'y', 'z', 'w']
-    
+
     harmonic_energy_exps = []
     for qidx in range(len(centers)):
         k = f'kq{labels[qidx]}'
@@ -84,7 +114,7 @@ def Orientaion_restraint(ref_pos, atom_idxs, centers, force_consts):
         q = f'q{labels[qidx]}'
         harmonic_energy_exps.append(f"0.5*{k}*({q}-{q0})^2")
         # print(harmonic_energy_exps)
-   
+
     harmonic_energy_exp = "+".join(harmonic_energy_exps)
     harmonic_restraint_force = omm.CustomCVForce(harmonic_energy_exp)
     for qidx in range(len(centers)):
@@ -93,3 +123,19 @@ def Orientaion_restraint(ref_pos, atom_idxs, centers, force_consts):
         harmonic_restraint_force.addGlobalParameter(f'q0{labels[qidx]}', centers[qidx])
         harmonic_restraint_force.addGlobalParameter(f'kq{labels[qidx]}', force_consts[qidx])
     return harmonic_restraint_force
+
+def r_wall(group1_idxs, group2_idxs, lowerwall=0.0*unit.nanometer, upperwall=0.3*unit.nanometer, force_const=2000*unit.kilojoule_per_mole/unit.nanometer**2):
+
+    r_cv = omm.CustomCentroidBondForce(2, 'distance(g1,g2)')
+    r_cv.addGroup(group1_idxs)
+    r_cv.addGroup(group2_idxs)
+    r_cv.addBond([0, 1], [])
+    # apply restraint if rmsd < lowerwall or rmsd > upperwall
+    wall_energy_exp = "0.5*kr*(min(0,r-lowerwall)^2+max(0,r-upperwall)^2)"
+    wall_restraint_force = omm.CustomCVForce(wall_energy_exp)
+    wall_restraint_force.addCollectiveVariable("r", r_cv)
+    wall_restraint_force.addGlobalParameter("lowerwall", lowerwall)
+    wall_restraint_force.addGlobalParameter("upperwall", upperwall)
+    wall_restraint_force.addGlobalParameter("kr", force_const)
+
+    return wall_restraint_force

@@ -27,7 +27,7 @@ class HILLSReporter(object):
         self._file.write('#! SET multivariate false\n')
         self._file.write('#! SET kerneltype gaussian\n')
         self._file.flush()
-        
+
     def describeNextReport(self, simulation):
 
         steps = self._reportInterval - simulation.currentStep % self._reportInterval
@@ -39,8 +39,9 @@ class HILLSReporter(object):
         if not self._is_intialized:
             self._initialize(simulation)
             self._is_intialized = True
-            
+
         state = simulation.context.getState(getEnergy=True, groups={self.forceGroup})
+
         energy = state.getPotentialEnergy()
         currentHillHeight = self.meta.height*np.exp(-energy/(unit.MOLAR_GAS_CONSTANT_R*self.meta._deltaT))
         hillhight = ((self.meta.temperature+self.meta._deltaT)/self.meta._deltaT)*currentHillHeight.value_in_unit(unit.kilojoules_per_mole)
@@ -48,9 +49,9 @@ class HILLSReporter(object):
         time = state.getTime().value_in_unit(unit.picosecond)
         time = round(time, 4)
         cv = self.meta.getCollectiveVariables(simulation)
-        self._file.write(f'{time:15} {cv[0]:20.16f}          {self.sigma} {hillhight:20.16f}          {self.bias}\n')            
+        self._file.write(f'{time:15} {cv[0]:20.16f}          {self.sigma} {hillhight:20.16f}          {self.bias}\n')
         self._file.flush()
-        
+
     def close(self):
         "Close the underlying trajectory file"
         self._file.close()
@@ -68,7 +69,7 @@ class COLVARReporter(object):
         self._h5 = None
         self._reportInterval = reportInterval
         self._is_intialized = False
-        self.meta = meta 
+        self.meta = meta
         self.forces = forces
 
     def _initialize(self, simulation):
@@ -123,13 +124,16 @@ class COLVARReporter(object):
         if not self._is_intialized:
             self._initialize(simulation)
             self._is_intialized = True
+        if self.meta is not None:
+            current_cvs = list(self.meta.getCollectiveVariables(simulation))
+        else:
+            current_cvs = []
 
-        current_cvs = list(self.meta.getCollectiveVariables(simulation))
         for f in self.forces:
             current_cvs.extend(f.getCollectiveVariableValues(simulation.context))
 
         self._extend_traj_field('CV', np.array(current_cvs))
-    
+
         self.h5.flush()
 
     def close(self):

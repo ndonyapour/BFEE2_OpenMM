@@ -16,9 +16,10 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 
+
+
 sys.path.append('../utils')
 from BFEE2_CV import *
-from Euleranglesplugin import EuleranglesForce
 from reporters import HILLSReporter, COLVARReporter
 
 # from wepy, to restart a simulation
@@ -44,32 +45,31 @@ VOLUME_MOVE_FREQ = 50
 NUM_STEPS = 5000000 # 500000 = 1ns   #5000000
 REPORTER_STEPS = 1000
 DCD_REPORTER_STEPSS = 50000
-HILLS_REPORTER_STEPS = 1000
 COLVAR_REPORTER_STEPS = 5000
-CHECKPOINT_REPORTER_STEPS = 5000
+CHECKPOINT_REPORTER_STEPS =  5000
 LOG_REPORTER_STEPS = 50000
-OUTPUTS_PATH = osp.realpath(f'outputs')
+OUTPUTS_PATH = osp.realpath(f'outputs_eq')
 SIM_TRAJ = 'traj.dcd'
 CHECKPOINT = 'checkpoint.chk'
 CHECKPOINT_LAST = 'checkpoint_last.chk'
 SYSTEM_FILE = 'system.pkl'
 OMM_STATE_FILE = 'state.pkl'
 LOG_FILE = 'log'
-STAR_CHECKPOINT = '../../openmm_plumed/000_eq/outputs/checkpoint_last.chk'
+
 
 #
 if not osp.exists(OUTPUTS_PATH):
     os.makedirs(OUTPUTS_PATH)
 
 # the inputs directory and files we need
-inputs_dir = osp.realpath(f'../../openmm_plumed/inputs')
+inputs_dir = osp.realpath(f'./inputs')
 
-prmfile = osp.join(inputs_dir, 'complex.prmtop')
+prmfile = osp.join(inputs_dir, 'complex_largebox.prmtop')
 prmtop = omma.amberprmtopfile.AmberPrmtopFile(prmfile)
 
 checkpoint_path = osp.join(OUTPUTS_PATH, CHECKPOINT) # modify based on the simulation
 
-pdb_file = osp.join(inputs_dir, 'complex_bfee2.pdb')
+pdb_file = osp.join(inputs_dir, 'complex_largebox.pdb')
 pdb = mdj.load_pdb(pdb_file)
 
 
@@ -116,27 +116,38 @@ eulertheta_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(),
                                      protein_idxs.tolist(),
                                      center=4.57,
                                      angle="Theta",
-                                     force_const=41.84) # 0.4184
+                                     force_const=0.4184)
 system.addForce(eulertheta_res)
 
-harmonic_wall = EulerAngle_wall(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(),
-                                           angle="Phi",
-                                           lowerwall=-35.0, # fails when passing with units -15.0* unit.degree
-                                           upperwall=5.0,
-                                           force_const=100)#*unit.kilojoule_per_mole/unit.degree**2)
+# harmonic restraint on Euler phi
+eulerphi_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(),
+                                     protein_idxs.tolist(),
+                                     center=-20.24,
+                                     angle="Phi",
+                                     force_const=0.4184)
+system.addForce(eulerphi_res)
 
-system.addForce(harmonic_wall)
-# using modefied version from biosimspace
-sigma = 0.6
-cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Phi")
-bias = omma.metadynamics.BiasVariable(cv, minValue=-40.0, maxValue=10.0,
-                                      biasWidth=sigma, periodic=False, gridWidth=400)
-bias_factor = 15.0
-meta = omma.metadynamics.Metadynamics(system, [bias],
-                    TEMPERATURE,
-                    biasFactor=bias_factor,
-                    height=0.01*unit.kilojoules_per_mole,
-                    frequency=HILLS_REPORTER_STEPS)
+eulerpsi_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(),
+                                     protein_idxs.tolist(),
+                                     center=13.53,
+                                     angle="Psi",
+                                     force_const=0.4184)
+system.addForce(eulerpsi_res)
+
+polartheta_res = PolarAngle_harmonic(ref_pos, ligand_idxs.tolist(),
+                                     protein_idxs.tolist(),
+                                     center=67.56,
+                                     angle="Theta",
+                                     force_const=0.4184)
+system.addForce(polartheta_res)
+
+polarphi_res = PolarAngle_harmonic(ref_pos, ligand_idxs.tolist(),
+                                     protein_idxs.tolist(),
+                                     center=60.87,
+                                     angle="Phi",
+                                     force_const=0.4184)
+system.addForce(polarphi_res)
+
 
 integrator = omm.LangevinIntegrator(TEMPERATURE, FRICTION_COEFFICIENT, STEP_SIZE)
 
@@ -147,11 +158,7 @@ prop = dict(Precision=PRECISION)
 #     f.setForceGroup(i)
 
 simulation = omma.Simulation(prmtop.topology, system, integrator, platform, prop)
-if osp.exists(STAR_CHECKPOINT):
-    print(f"Start Simulation from checkpoint {STAR_CHECKPOINT}")
-    simulation.loadCheckpoint(STAR_CHECKPOINT)
-else:
-    print("Can not find the checkpoint")
+simulation.context.setPositions(ref_pos)
 
 
 simulation.reporters.append(mdj.reporters.DCDReporter(osp.join(OUTPUTS_PATH, SIM_TRAJ),
@@ -177,17 +184,14 @@ simulation.reporters.append(
     )
 )
 
-simulation.reporters.append(HILLSReporter(meta,
-                                          "./",
-                                          sigma,
-                                          reportInterval=HILLS_REPORTER_STEPS,
-                                          cvname="eulerPhi"))
-simulation.reporters.append(COLVARReporter(meta, './',
-                                           [rmsd_res, eulertheta_res, orientaion_res],
-                                           reportInterval=COLVAR_REPORTER_STEPS))
+
+simulation.reporters.append(COLVARReporter(None, './',
+                                           [rmsd_res, eulertheta_res, eulerphi_res, eulerpsi_res,
+                                            polartheta_res, polarphi_res, orientaion_res],
+                                            reportInterval=COLVAR_REPORTER_STEPS))
 
 start_time = time.time()
-meta.step(simulation, NUM_STEPS)
+simulation.step(NUM_STEPS)
 end_time = time.time()
 print("End Simulation")
 print(f"Run time = {np.round(end_time - start_time, 3)}s")

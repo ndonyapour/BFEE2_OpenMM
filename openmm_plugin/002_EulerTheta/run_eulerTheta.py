@@ -42,7 +42,7 @@ VOLUME_MOVE_FREQ = 50
 
 # reporter
 NUM_STEPS = 5000000 # 500000 = 1ns   #5000000
-DCD_REPORTER_STEPS = 50000
+DCD_REPORTER_STEPS = 5000
 COLVAR_REPORTER_STEPS = 5000
 HILLS_REPORTER_STEPS = 1000
 CHECKPOINT_REPORTER_STEPS =  5000
@@ -59,7 +59,7 @@ STAR_CHECKPOINT = '../../openmm_plumed/000_eq/outputs/checkpoint_last.chk'
 #
 if not osp.exists(OUTPUTS_PATH):
     os.makedirs(OUTPUTS_PATH)
-    
+
 # the inputs directory and files we need
 inputs_dir = osp.realpath(f'../../openmm_plumed/inputs')
 
@@ -91,7 +91,7 @@ system.addForce(barostat)
 
 
 # Translation restraint on protein
-dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers 
+dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers
 translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
                                  force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2) #41840
 system.addForce(translation_res)
@@ -102,7 +102,7 @@ q_force_consts = [8368*unit.kilojoule_per_mole/unit.nanometer**2 for _ in range(
 orientaion_res = Orientaion_restraint(ref_pos, protein_idxs.tolist(), q_centers, q_force_consts)
 system.addForce(orientaion_res)
 
-# harmonic restraint on ligand rmsd 
+# harmonic restraint on ligand rmsd
 rmsd_res = RMSD_harmonic(ref_pos, ligand_idxs.tolist(), center=0.0*unit.nanometer,
                          force_const=4184*unit.kilojoule_per_mole/unit.nanometer**2) # 4184
 
@@ -110,26 +110,28 @@ system.addForce(rmsd_res)
 
 # Euler Theta CV
 
-# fails when passing with CV units unit.degree
+# fails when passing with CV units of unit.degree
 eulertheta_harmonic_wall = EulerAngle_wall(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(),
                                            angle="Theta",
-                                           lowerwall=-15.0, 
+                                           lowerwall=-15.0,
                                            upperwall=15.0,
                                            force_const=100)
 
 system.addForce(eulertheta_harmonic_wall)
 
-sigma = 0.5
+sigma = 0.6
 eulertheta_cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Theta")
-eulertheta_bias = omma.metadynamics.BiasVariable(eulertheta_cv, minValue=-20.0, maxValue=20.0, 
-                                           biasWidth=sigma, periodic=False, gridWidth=400)
+eulertheta_bias = omma.metadynamics.BiasVariable(eulertheta_cv, minValue=-20.0, maxValue=20.0,
+                                                 biasWidth=sigma, periodic=False, gridWidth=400)
 
 bias = 15.0
-meta = omma.metadynamics.Metadynamics(system, [eulertheta_bias], 
+meta = omma.metadynamics.Metadynamics(system, [eulertheta_bias],
                     TEMPERATURE,
                     biasFactor=bias,
                     height=0.01*unit.kilojoules_per_mole,
                     frequency=HILLS_REPORTER_STEPS)
+                    # saveFrequency=HILLS_REPORTER_STEPS,
+                    # biasDir=".")
 
 integrator = omm.LangevinIntegrator(TEMPERATURE, FRICTION_COEFFICIENT, STEP_SIZE)
 
@@ -168,17 +170,17 @@ simulation.reporters.append(
     )
 )
 
-simulation.reporters.append(HILLSReporter(meta, 
-                                          "./", 
-                                          sigma, 
-                                          reportInterval=HILLS_REPORTER_STEPS, 
+simulation.reporters.append(HILLSReporter(meta,
+                                          "./",
+                                          sigma,
+                                          reportInterval=HILLS_REPORTER_STEPS,
                                           cvname="eulerTheta"))
-simulation.reporters.append(COLVARReporter(meta, './', 
+simulation.reporters.append(COLVARReporter(meta, './',
                                            [rmsd_res, orientaion_res],
                                            reportInterval=COLVAR_REPORTER_STEPS))
 
-start_time = time.time() 
-simulation.step(NUM_STEPS)
+start_time = time.time()
+meta.step(simulation, NUM_STEPS)
 end_time = time.time()
 print("End Simulation")
 print(f"Run time = {np.round(end_time - start_time, 3)}s")

@@ -16,10 +16,6 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 
-from metadynamics import *
-
-
-
 sys.path.append('../utils')
 from BFEE2_CV import *
 from Euleranglesplugin import EuleranglesForce
@@ -64,7 +60,7 @@ STAR_CHECKPOINT = '../../openmm_plumed/000_eq/outputs/checkpoint_last.chk'
 #
 if not osp.exists(OUTPUTS_PATH):
     os.makedirs(OUTPUTS_PATH)
-    
+
 # the inputs directory and files we need
 inputs_dir = osp.realpath(f'../../openmm_plumed/inputs')
 
@@ -96,7 +92,7 @@ system.addForce(barostat)
 
 
 # Translation restraint on protein
-dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers 
+dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers
 translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
                                  force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2) #41840
 system.addForce(translation_res)
@@ -107,7 +103,7 @@ q_force_consts = [8368*unit.kilojoule_per_mole/unit.nanometer**2 for _ in range(
 orientaion_res = Orientaion_restraint(ref_pos, protein_idxs.tolist(), q_centers, q_force_consts)
 system.addForce(orientaion_res)
 
-# harmonic restraint on ligand rmsd 
+# harmonic restraint on ligand rmsd
 rmsd_res = RMSD_harmonic(ref_pos, ligand_idxs.tolist(), center=0.0*unit.nanometer,
                          force_const=4184*unit.kilojoule_per_mole/unit.nanometer**2) # 4184
 
@@ -116,16 +112,16 @@ system.addForce(rmsd_res)
 # Euler Theta CV
 
 # harmonic restraint on Euler theta
-eulertheta_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(), 
-                                     protein_idxs.tolist(), 
+eulertheta_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(),
+                                     protein_idxs.tolist(),
                                      center=4.57,
                                      angle="Theta",
                                      force_const=0.4184)
 system.addForce(eulertheta_res)
 
 # harmonic restraint on Euler phi
-eulerphi_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(), 
-                                     protein_idxs.tolist(), 
+eulerphi_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(),
+                                     protein_idxs.tolist(),
                                      center=-20.24,
                                      angle="Phi",
                                      force_const=0.4184)
@@ -141,10 +137,10 @@ system.addForce(harmonic_wall)
 # # using modefied version from biosimspace
 sigma = 0.6
 cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Psi")
-bias = omma.metadynamics.BiasVariable(cv, minValue=-8.0, maxValue=38.0, 
-                    biasWidth=sigma, periodic=False, gridWidth=400)
-bias_factor = 15.0
-meta = omma.metadynamics.Metadynamics(system, [bias], 
+bias = omma.metadynamics.BiasVariable(cv, minValue=-8.0, maxValue=38.0,
+                                      biasWidth=sigma, periodic=False, gridWidth=400)
+bias_factor = 15
+meta = omma.metadynamics.Metadynamics(system, [bias],
                     TEMPERATURE,
                     biasFactor=bias_factor,
                     height=0.01*unit.kilojoules_per_mole,
@@ -189,17 +185,17 @@ simulation.reporters.append(
     )
 )
 
-simulation.reporters.append(HILLSReporter(meta, 
-                                          "./", 
-                                          sigma, 
-                                          reportInterval=HILLS_REPORTER_STEPS, 
+simulation.reporters.append(HILLSReporter(meta,
+                                          "./",
+                                          sigma,
+                                          reportInterval=HILLS_REPORTER_STEPS,
                                           cvname="eulerPsi"))
-simulation.reporters.append(COLVARReporter(meta, './', 
+simulation.reporters.append(COLVARReporter(meta, './',
                                            [rmsd_res, eulertheta_res, eulerphi_res, orientaion_res],
                                            reportInterval=COLVAR_REPORTER_STEPS))
 
-start_time = time.time() 
-simulation.step(NUM_STEPS)
+start_time = time.time()
+meta.step(simulation, NUM_STEPS)
 end_time = time.time()
 print("End Simulation")
 print(f"Run time = {np.round(end_time - start_time, 3)}s")

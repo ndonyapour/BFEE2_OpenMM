@@ -16,12 +16,9 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 
-from metadynamics import *
-
-
 #from BFEE2_CV import RMSD_CV, Translation_CV
-sys.path.append('../')
-from  BFEE2_CV import EulerAngle_wall, Translation_restraint, Orientaion_restraint, RMSD_harmonic 
+sys.path.append('../utils')
+from  BFEE2_CV import * 
 from Euleranglesplugin import EuleranglesForce
 
 
@@ -45,8 +42,8 @@ PRESSURE = 1.0 * unit.atmosphere
 VOLUME_MOVE_FREQ = 50
 
 # reporter
-NUM_STEPS = 5000 
-REPORT_STEPS = 50
+NUM_STEPS = 50000 
+REPORT_STEPS = 1
 
 OUTPUTS_PATH = osp.realpath(f'outputs')
 SIM_TRAJ = 'traj.dcd'
@@ -85,31 +82,46 @@ system.addForce(barostat)
 # Define CVs and restraint forces
 
 # Translation restraint on protein
-dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers 
-translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
-                                 force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2) #41840
-system.addForce(translation_res)
+# dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers 
+# translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
+#                                  force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2) #41840
+# system.addForce(translation_res)
 
-# Orientaion restraint
-q_centers = [1.0, 0.0, 0.0, 0.0]
-q_force_consts = [8368*unit.kilojoule_per_mole/unit.nanometer**2 for _ in range(4)]
-orientaion_res = Orientaion_restraint(ref_pos, protein_idxs.tolist(), q_centers, q_force_consts)
-system.addForce(orientaion_res)
+# # Orientaion restraint
+# q_centers = [1.0, 0.0, 0.0, 0.0]
+# q_force_consts = [8368*unit.kilojoule_per_mole/unit.nanometer**2 for _ in range(4)]
+# orientaion_res = Orientaion_restraint(ref_pos, protein_idxs.tolist(), q_centers, q_force_consts)
+# system.addForce(orientaion_res)
 
 # test if CV working 
-cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Psi") 
-cv.setForceGroup(29)
-system.addForce(cv)
+# cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Phi") 
+# cv.setForceGroup(29)
+# system.addForce(cv)
+
+k = 100
+
+center = -20.24  # phi 
+
+#center = 13.53
+
+eulerphi_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(), 
+                                     protein_idxs.tolist(), 
+                                     center=center,
+                                     angle="Phi",
+                                     force_const=k)
+eulerphi_res.setForceGroup(30)
+system.addForce(eulerphi_res)
+
 
 # test walls
-harmonic_wall = EulerAngle_wall(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(),
-                                           angle="Psi",
-                                           lowerwall=-2,
-                                           upperwall=2,
-                                           force_const=1000)
+# harmonic_wall = EulerAngle_wall(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(),
+#                                            angle="Psi",
+#                                            lowerwall=-2,
+#                                            upperwall=2,
+#                                            force_const=1000)
 
-harmonic_wall.setForceGroup(30)
-system.addForce(harmonic_wall)
+# harmonic_wall.setForceGroup(30)
+# system.addForce(harmonic_wall)
 
 # test metadynamics
 # sigma_eulerTheta = 0.01
@@ -137,6 +149,21 @@ simulation.context.setPositions(ref_pos)
 simulation.reporters.append(mdj.reporters.DCDReporter(osp.join(OUTPUTS_PATH, SIM_TRAJ),
                                                                 REPORT_STEPS,
                                                                 atomSubset=protein_ligand_idxs))
+# simulation.reporters.append(
+#     omma.StateDataReporter(
+#         sys.stdout,
+#         1,
+#         step=True,
+#         time=True,
+#         potentialEnergy=True,
+#         kineticEnergy=True,
+#         totalEnergy=True,
+#         volume=True,
+#         temperature=True,
+#         totalSteps=True,
+#         separator=" ",
+#     )
+# )
 
 
 #forces_file = open("biases.dat", 'w')
@@ -144,17 +171,19 @@ data = []
 forces = []
 for x in range(0, int(NUM_STEPS/REPORT_STEPS)):
     simulation.step(REPORT_STEPS)
-    state = simulation.context.getState(getEnergy=True, getForces=True, groups={29})
-    cv_value = state.getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole)
-    data.append(cv_value)
-    print(cv_value)
-    
+    # state = simulation.context.getState(getEnergy=True, getForces=True, groups={29})
+    # cv_value = state.getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole)
+    # data.append(cv_value)
+    cv_value = eulerphi_res.getCollectiveVariableValues(simulation.context)[0]
     state = simulation.context.getState(getEnergy=True, getForces=True, groups={30})
-    wall_energy= state.getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole)
-    #wall_forces = state.getForces(asNumpy=True)
-    wall_cv = harmonic_wall.getCollectiveVariableValues(simulation.context)
-    #print(f"Euler Theta= {eulertheta}, wall_cv={wall_cv[0]}, wall_energy={wall_energy}\n ")
-    calculated_energy = 0.5 * 1000 * (min(wall_cv[0] - (-5), 0)**2 + max(wall_cv[0]-5, 0)**2)
-    print(f"wall_cv={wall_cv[0]}, calc_energy={calculated_energy}, wall_energy={wall_energy}")
+    wall_energy = state.getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole)
+
+    calculated_energy = 0.5 * k * (cv_value - center)**2
+    print(f"cv={cv_value} walll_energy={wall_energy} calculated_energy = {calculated_energy}")
+    # #wall_forces = state.getForces(asNumpy=True)
+    # wall_cv = harmonic_wall.getCollectiveVariableValues(simulation.context)
+    # #print(f"Euler Theta= {eulertheta}, wall_cv={wall_cv[0]}, wall_energy={wall_energy}\n ")
+    
+    # print(f"wall_cv={wall_cv[0]}, calc_energy={calculated_energy}, wall_energy={wall_energy}")
 np.save('COLVAR', np.array(data))
 np.save('forces', np.array(forces))
