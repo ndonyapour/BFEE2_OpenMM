@@ -186,7 +186,7 @@ simulation.reporters.append(
 )
 
 
-simulation.reporters.append(COLVARReporter(None, './',
+simulation.reporters.append(COLVARReporter(None, OUTPUTS_PATH,
                                            [rmsd_res, eulertheta_res, eulerphi_res, eulerpsi_res,
                                             polartheta_res, polarphi_res, orientaion_res],
                                             reportInterval=COLVAR_REPORTER_STEPS))
