@@ -72,7 +72,7 @@ prmtop = omma.amberprmtopfile.AmberPrmtopFile(prmfile)
 
 checkpoint_path = osp.join(OUTPUTS_PATH, CHECKPOINT) # modify based on the simulation
 
-pdb_file = osp.join(inputs_dir, 'complex_largebox.pdb')
+pdb_file = osp.join(inputs_dir, 'complex_largebox_bfee2.pdb')
 pdb = mdj.load_pdb(pdb_file)
 
 
@@ -95,7 +95,9 @@ system.addForce(barostat)
 
 
 # Translation restraint on protein
-dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers
+# TODO write a code to calculate the com
+com = mdj.compute_center_of_mass(pdb, select='resname "MOL" and type!="H"')
+dummy_atom_pos = omm.vec3.Vec3(*com[0])*unit.nanometers
 translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
                                  force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2) #41840
 system.addForce(translation_res)

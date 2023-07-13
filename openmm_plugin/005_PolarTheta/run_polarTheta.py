@@ -96,7 +96,8 @@ system.addForce(barostat)
 
 
 # Translation restraint on protein
-dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers
+com = mdj.compute_center_of_mass(pdb, select='resname "MOL" and type!="H"')
+dummy_atom_pos = omm.vec3.Vec3(*com[0])*unit.nanometers
 translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
                                  force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2) #41840
 system.addForce(translation_res)
@@ -143,7 +144,7 @@ harmonic_wall = PolarAngle_wall(ref_pos, ligand_idxs.tolist(), protein_idxs.toli
                                            angle="Theta",
                                            lowerwall=47.0, # fails when passing with units -15.0* unit.degree
                                            upperwall=87.0,
-                                           force_const=0)#*unit.kilojoule_per_mole/unit.degree**2)
+                                           force_const=100)#*unit.kilojoule_per_mole/unit.degree**2)
 
 system.addForce(harmonic_wall)
 # # using modefied version from biosimspace
@@ -155,7 +156,7 @@ bias_factor = 15.0
 meta = omma.metadynamics.Metadynamics(system, [bias],
                     TEMPERATURE,
                     biasFactor=bias_factor,
-                    height=0.05*unit.kilojoules_per_mole,
+                    height=0.01*unit.kilojoules_per_mole,
                     frequency=HILLS_REPORTER_STEPS)
 
 integrator = omm.LangevinIntegrator(TEMPERATURE, FRICTION_COEFFICIENT, STEP_SIZE)
