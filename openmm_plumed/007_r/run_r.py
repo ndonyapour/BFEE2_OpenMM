@@ -39,15 +39,15 @@ VOLUME_MOVE_FREQ = 50
 NUM_STEPS = 500000000 # 500000 = 1ns
 DCD_REPORT_STEPS = 5000000
 CHECKPOINT_REPORTER_STEPS = 5000
-LOG_REPORTER_STEPS = 5000000
-OUTPUTS_PATH = osp.realpath(f'outputs7')
+LOG_REPORTER_STEPS = 1
+OUTPUTS_PATH = osp.realpath(f'outputs10')
 SIM_TRAJ = 'traj.dcd'
 CHECKPOINT = 'checkpoint.chk'
 CHECKPOINT_LAST = 'checkpoint_last.chk'
 SYSTEM_FILE = 'system.pkl'
 OMM_STATE_FILE = 'state.pkl'
 LOG_FILE = 'log'
-STAR_CHECKPOINT = osp.realpath('./outputs6/checkpoint.chk')
+STAR_CHECKPOINT = osp.realpath('./outputs9/checkpoint.chk')
 
 if not osp.exists(OUTPUTS_PATH):
     os.makedirs(OUTPUTS_PATH)

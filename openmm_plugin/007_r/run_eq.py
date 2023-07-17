@@ -92,7 +92,8 @@ system.addForce(barostat)
 
 
 # Translation restraint on protein
-com = mdj.compute_center_of_mass(pdb, select='resname "MOL" and type!="H"')
+com = mdj.compute_center_of_mass(pdb, select='protein and type!="H"')
+# 5.311916,4.925861,4.9739213 
 dummy_atom_pos = omm.vec3.Vec3(*com[0])*unit.nanometers
 translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
                                  force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2) #41840
