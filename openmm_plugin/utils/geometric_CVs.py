@@ -53,6 +53,19 @@ class GeometricCVs:
 
             return rot_q
 
+    def orientaion(self, refpositions, positions, group_idxs, fittingGroup_idxs=None):
+        qs = []
+        #qs = []
+        enable_fitting = False if fittingGroup_idxs is None else True
+    
+        for idx in range(positions.shape[0]):
+            rot_q = self.calc_quaternion(refpositions[group_idxs], positions[idx][group_idxs], 
+                                         refpositions[fittingGroup_idxs], positions[idx][fittingGroup_idxs], 
+                                         enable_fitting)
+            qs.append(rot_q)
+ 
+        return np.array(qs)
+    
     def EuelrAngle(self, refpositions, positions, group_idxs, fittingGroup_idxs=None, angle='Theta'):
         angles = []
         #qs = []
@@ -138,7 +151,7 @@ class GeometricCVs:
     
     def rmsd(self, pdb, traj, atom_idxs):
 
-        return mdj.rmsd(pdb, traj, atom_indices=atom_idxs)
+        return mdj.rmsd(traj, pdb, atom_indices=atom_idxs)
     
     def r(self, traj, selection1, seletion2):
         coms1 = mdj.compute_center_of_mass(traj, select=selection1)
@@ -182,23 +195,6 @@ class Quaternion:
     def calculate_overlap_matrix(self, C):
 
         S = np.zeros((4, 4))
-
-        # S[0][0] = C[0][0] + C[1][1] + C[2][2]
-        # S[1][1] = C[0][0] - C[1][1] - C[2][2]
-        # S[2][2] = - C[0][0] + C[1][1] - C[2][2]
-        # S[3][3] = - C[0][0] - C[1][1] + C[2][2]
-        # S[0][1] = C[1][2] - C[2][1]
-        # S[0][2] = - C[0][2] + C[2][0]
-        # S[0][3] = C[0][1] - C[1][0]
-        # S[1][2] = C[0][1] + C[1][0]
-        # S[1][3] = C[0][2] + C[2][0]
-        # S[2][3] = C[1][2] + C[2][1]
-        # S[1][0] = S[0][1]
-        # S[2][0] = S[0][2]
-        # S[2][1] = S[1][2]
-        # S[3][0] = S[0][3]
-        # S[3][1] = S[1][3]
-        # S[3][2] = S[2][3]
         S[0][0] =  - C[0][0] - C[1][1]- C[2][2]
         S[1][1] = - C[0][0] + C[1][1] + C[2][2]
         S[2][2] =  C[0][0] - C[1][1] + C[2][2]
@@ -218,6 +214,7 @@ class Quaternion:
 
         self.S = S
         return S
+    
     def Swap(self,  arr, start_index, last_index):
             arr[:, [start_index, last_index]] = arr[:, [last_index, start_index]]
 

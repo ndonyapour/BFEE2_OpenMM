@@ -16,15 +16,8 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 
-from metadynamics import *
-
-
-
 sys.path.append('../utils')
 from BFEE2_CV import *
-from Euleranglesplugin import EuleranglesForce
-from Polaranglesplugin import PolaranglesForce
-from reporters import HILLSReporter, COLVARReporter
 
 # from wepy, to restart a simulation
 GET_STATE_KWARG_DEFAULTS = (('getPositions', True),
@@ -109,36 +102,6 @@ q_force_consts = [8368*unit.kilojoule_per_mole/unit.nanometer**2 for _ in range(
 orientaion_res = Orientaion_restraint(ref_pos, protein_idxs.tolist(), q_centers, q_force_consts)
 system.addForce(orientaion_res)
 
-# RMSD CV
-rmsd_cv = omm.RMSDForce(ref_pos, ligand_idxs)
-rmsd_cv.setForceGroup(20)
-system.addForce(rmsd_cv)
-
-# Euler Theta
-eulertheta_cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Theta")
-eulertheta_cv.setForceGroup(21)
-system.addForce(eulertheta_cv)
-
-# Euler Phi
-eulerphi_cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Phi")
-eulerphi_cv.setForceGroup(22)
-system.addForce(eulerphi_cv)
-
-# Euler Phi
-eulerpsi_cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Psi")
-eulerpsi_cv.setForceGroup(23)
-system.addForce(eulerpsi_cv)
-
-# Polar Theta
-polartheta_cv = PolaranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Theta")
-polartheta_cv.setForceGroup(24)
-system.addForce(polartheta_cv)
-
-# Polar Phi
-polarphi_cv = PolaranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Phi")
-polarphi_cv.setForceGroup(25)
-system.addForce(polarphi_cv)
-
 integrator = omm.LangevinIntegrator(TEMPERATURE, FRICTION_COEFFICIENT, STEP_SIZE)
 
 platform = omm.Platform.getPlatformByName(PLATFORM)
@@ -173,18 +136,4 @@ simulation.reporters.append(
 )
 
 print("Start simulations from the crystal structures")
-CVs = []
-file = open("COLVAR", "w")
-for x in range(0, int(NUM_STEPS/COLVAR_REPORTER_STEPS)):
-    simulation.step(COLVAR_REPORTER_STEPS)
-    current_CVs = []
-    for f_id in [20, 21, 22, 23, 24, 25]:
-        state = simulation.context.getState(getEnergy=True, getForces=True, groups={f_id})
-        current_CVs.append(state.getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole))
-    CVs.append(current_CVs)
-    line = '\t'.join([str(n) for n in current_CVs])
-    line += "\n"
-    file.write(line)
-    file.flush()
-
-np.save('COLVAR', np.array(CVs))
+simulation.step(NUM_STEPS)
