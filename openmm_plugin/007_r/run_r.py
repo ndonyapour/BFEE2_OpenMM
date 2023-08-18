@@ -16,13 +16,8 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 
-from metadynamics import *
-
-
-
 sys.path.append('../utils')
 from BFEE2_CV import *
-from Polaranglesplugin import PolaranglesForce
 from reporters import HILLSReporter, COLVARReporter
 
 # from wepy, to restart a simulation
@@ -59,7 +54,7 @@ CHECKPOINT_LAST = 'checkpoint_last.chk'
 SYSTEM_FILE = 'system.pkl'
 OMM_STATE_FILE = 'state.pkl'
 LOG_FILE = 'log'
-STAR_CHECKPOINT = '../outputs_eq/checkpoint_last.chk'
+STAR_CHECKPOINT = './outputs_eq/checkpoint_last.chk'
 
 #
 if not osp.exists(OUTPUTS_PATH):

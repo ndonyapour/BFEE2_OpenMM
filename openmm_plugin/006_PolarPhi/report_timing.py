@@ -11,12 +11,14 @@ import openmm.app as omma
 import openmm as omm
 import simtk.unit as unit
 
+from metadynamics import *
 import mdtraj as mdj
 import parmed as pmd
 import time
 
 sys.path.append('../utils')
 from BFEE2_CV import *
+from Polaranglesplugin import PolaranglesForce
 
 
 def report_timing(meta, simulation, description):
@@ -33,22 +35,9 @@ def report_timing(meta, simulation, description):
         elapsed_time = (final_time - initial_time) * unit.seconds
         ns_per_day = nsteps * timestep / elapsed_time / (unit.nanoseconds / unit.day)
         print('\n *************%64s : %16s : %8.3f ns/day ***************\n' % (description, platform_name, ns_per_day))
-sys.path.append('../utils')
-from BFEE2_CV import *
-from Euleranglesplugin import EuleranglesForce
-from reporters import HILLSReporter, COLVARReporter
+        
 
 # from wepy, to restart a simulation
-GET_STATE_KWARG_DEFAULTS = (('getPositions', True),
-                            ('getVelocities', True),
-                            ('getForces', True),
-                            ('getEnergy', True),
-                            ('getParameters', True),
-                            ('getParameterDerivatives', True),
-                            ('enforcePeriodicBox', True),)
-# Platform used for OpenMM which uses different hardware computation
-# kernels. Options are: Reference, CPU, OpenCL, CUDA.
-
 PLATFORM = 'CUDA'
 PRECISION = 'mixed'
 TEMPERATURE = 300.0 * unit.kelvin
@@ -59,11 +48,12 @@ VOLUME_MOVE_FREQ = 50
 
 # reporter
 NUM_STEPS = 5000000 # 500000 = 1ns   #5000000
-DCD_REPORTER_STEPS = 5000
-COLVAR_REPORTER_STEPS = 5000
+REPORTER_STEPS = 1000
+DCD_REPORTER_STEPSS = 50000
 HILLS_REPORTER_STEPS = 1000
+COLVAR_REPORTER_STEPS = 5000
 CHECKPOINT_REPORTER_STEPS =  5000
-LOG_REPORTER_STEPS = 5000
+LOG_REPORTER_STEPS = 50000
 OUTPUTS_PATH = osp.realpath(f'outputs')
 SIM_TRAJ = 'traj.dcd'
 CHECKPOINT = 'checkpoint.chk'
@@ -72,6 +62,10 @@ SYSTEM_FILE = 'system.pkl'
 OMM_STATE_FILE = 'state.pkl'
 LOG_FILE = 'log'
 STAR_CHECKPOINT = '../../openmm_plumed/000_eq/outputs/checkpoint_last.chk'
+
+#
+if not osp.exists(OUTPUTS_PATH):
+    os.makedirs(OUTPUTS_PATH)
 
 # the inputs directory and files we need
 inputs_dir = osp.realpath(f'../../openmm_plumed/inputs')
@@ -124,34 +118,62 @@ system.addForce(rmsd_res)
 
 # Euler Theta CV
 
-# fails when passing with CV units of unit.degree
-eulertheta_harmonic_wall = EulerAngle_wall(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(),
-                                           angle="Theta",
-                                           lowerwall=-15.0,
-                                           upperwall=15.0,
-                                           force_const=100)
+# harmonic restraint on Euler theta
+eulertheta_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(),
+                                     protein_idxs.tolist(),
+                                     center=4.57,
+                                     angle="Theta",
+                                     force_const=0.4184)
+system.addForce(eulertheta_res)
 
-system.addForce(eulertheta_harmonic_wall)
+# harmonic restraint on Euler phi
+eulerphi_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(),
+                                     protein_idxs.tolist(),
+                                     center=-20.24,
+                                     angle="Phi",
+                                     force_const=0.4184)
+system.addForce(eulerphi_res)
 
-sigma = 0.6
-eulertheta_cv = EuleranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Theta")
-eulertheta_bias = omma.metadynamics.BiasVariable(eulertheta_cv, minValue=-20.0, maxValue=20.0,
-                                                 biasWidth=sigma, periodic=False, gridWidth=400)
+eulerpsi_res = EulerAngle_harmonic(ref_pos, ligand_idxs.tolist(),
+                                     protein_idxs.tolist(),
+                                     center=13.53,
+                                     angle="Psi",
+                                     force_const=0.4184)
+system.addForce(eulerpsi_res)
 
-bias = 15.0
-meta = omma.metadynamics.Metadynamics(system, [eulertheta_bias],
+polartheta_res = PolarAngle_harmonic(ref_pos, ligand_idxs.tolist(),
+                                     protein_idxs.tolist(),
+                                     center=67.56,
+                                     angle="Theta",
+                                     force_const=0.4184)
+system.addForce(polartheta_res)
+
+harmonic_wall = PolarAngle_wall(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(),
+                                           angle="Phi",
+                                           lowerwall=55, # fails when passing with units -15.0* unit.degree
+                                           upperwall=75.0,
+                                           force_const=100)#*unit.kilojoule_per_mole/unit.degree**2)
+
+system.addForce(harmonic_wall)
+# # using modefied version from biosimspace
+sigma = 0.5
+cv = PolaranglesForce(ref_pos, ligand_idxs.tolist(), protein_idxs.tolist(), "Phi")
+bias = omma.metadynamics.BiasVariable(cv, minValue=47, maxValue=78,
+                                      biasWidth=sigma, periodic=False, gridWidth=400)
+bias_factor = 15.0
+meta = omma.metadynamics.Metadynamics(system, [bias],
                     TEMPERATURE,
-                    biasFactor=bias,
+                    biasFactor=bias_factor,
                     height=0.01*unit.kilojoules_per_mole,
                     frequency=HILLS_REPORTER_STEPS)
-                    # saveFrequency=HILLS_REPORTER_STEPS,
-                    # biasDir=".")
 
 integrator = omm.LangevinIntegrator(TEMPERATURE, FRICTION_COEFFICIENT, STEP_SIZE)
 
 platform = omm.Platform.getPlatformByName(PLATFORM)
 prop = dict(Precision=PRECISION)
 
+# for i, f in enumerate(system.getForces()):
+#     f.setForceGroup(i)
 
 simulation = omma.Simulation(prmtop.topology, system, integrator, platform, prop)
 if osp.exists(STAR_CHECKPOINT):
@@ -159,8 +181,6 @@ if osp.exists(STAR_CHECKPOINT):
     simulation.loadCheckpoint(STAR_CHECKPOINT)
 else:
     print("Can not find the checkpoint")
-
-
 
 # make the integrator
 report_timing(meta, simulation, "Run time for this step:")

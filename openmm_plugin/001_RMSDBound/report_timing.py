@@ -16,29 +16,23 @@ import mdtraj as mdj
 import parmed as pmd
 import time
 
-sys.path.append('../')
-from  BFEE2_CV import RMSD_wall, Translation_restraint, Orientaion_restraint
+sys.path.append('../utils')
+from BFEE2_CV import *
 
-def report_timing(system, positions, description):
+def report_timing(meta, simulation, description):
     """Report timing on all available platforms."""
     timestep = 2.0*unit.femtoseconds
     nsteps = 5000
     for platform_name in ['CUDA']:
-        platform = omm.Platform.getPlatformByName(platform_name)
-
-        integrator = omm.LangevinIntegrator(300*unit.kelvin, 1.0/unit.picoseconds, timestep)
-        context = omm.Context(system, integrator, platform)
-        context.setPositions(positions)
+        meta.step(simulation, 10)
         # Warm up the integrator
-        integrator.step(10)
         # Time integration
         initial_time = time.time()
-        integrator.step(nsteps)
+        meta.step(simulation, nsteps)
         final_time = time.time()
         elapsed_time = (final_time - initial_time) * unit.seconds
         ns_per_day = nsteps * timestep / elapsed_time / (unit.nanoseconds / unit.day)
         print('\n *************%64s : %16s : %8.3f ns/day ***************\n' % (description, platform_name, ns_per_day))
-        del context, integrator
 
 # from wepy, to restart a simulation
 GET_STATE_KWARG_DEFAULTS = (('getPositions', True),
@@ -60,27 +54,36 @@ PRESSURE = 1.0 * unit.atmosphere
 VOLUME_MOVE_FREQ = 50
 
 # reporter
-NUM_STEPS = 5000000 # 500000 = 1ns
+NUM_STEPS = 10000000 # 500000 = 1ns
 DCD_REPORT_STEPS = 5000
+HILLS_REPORTER_STEPS = 500
+COLVAR_REPORTER_STEPS = 5000
 CHECKPOINT_REPORTER_STEPS =  5000
-LOG_REPORTER_STEPS = 500
+LOG_REPORTER_STEPS = 500000
 OUTPUTS_PATH = osp.realpath(f'outputs')
 SIM_TRAJ = 'traj.dcd'
 CHECKPOINT = 'checkpoint.chk'
 CHECKPOINT_LAST = 'checkpoint_last.chk'
 SYSTEM_FILE = 'system.pkl'
 OMM_STATE_FILE = 'state.pkl'
+LOG_FILE = 'log'
+STAR_CHECKPOINT = '../../openmm_plumed/000_eq/outputs/checkpoint_last.chk'
 
 #
 if not osp.exists(OUTPUTS_PATH):
     os.makedirs(OUTPUTS_PATH)
-# the inputs directory and files we need
 
-inputs_dir = osp.realpath('../../openmm_plumed/inputs')
+# the inputs directory and files we need
+inputs_dir = osp.realpath(f'../../openmm_plumed/inputs')
+
 prmfile = osp.join(inputs_dir, 'complex.prmtop')
+prmtop = omma.amberprmtopfile.AmberPrmtopFile(prmfile)
+
+checkpoint_path = osp.join(OUTPUTS_PATH, CHECKPOINT) # modify based on the simulation
+
 pdb_file = osp.join(inputs_dir, 'complex_bfee2.pdb')
 pdb = mdj.load_pdb(pdb_file)
-coords = omma.pdbfile.PDBFile(pdb_file).getPositions()
+
 
 # protein and type!="H"'
 protein_ligand_idxs = pdb.topology.select('protein or resname "MOL"')
@@ -89,43 +92,31 @@ protein_idxs = pdb.topology.select('protein and type!="H"')
 ref_pos = omma.pdbfile.PDBFile(pdb_file).getPositions()
 
 
-prmtop = omma.amberprmtopfile.AmberPrmtopFile(prmfile)
-#coords = omma.amberinpcrdfile.AmberInpcrdFile(coodsfile).getPositions()
-checkpoint_path = osp.join(OUTPUTS_PATH, CHECKPOINT)
-
-
-# build the system
 system = prmtop.createSystem(nonbondedMethod=omma.PME,
                             nonbondedCutoff=1*unit.nanometer,
                             constraints=omma.HBonds)
 
+
 # atm, 300 K, with volume move attempts every 50 steps
 barostat = omm.MonteCarloBarostat(PRESSURE, TEMPERATURE, VOLUME_MOVE_FREQ)
+# # add it as a "Force" to the system
 system.addForce(barostat)
 
-dummy_atom_pos = omm.vec3.Vec3(4.27077094, 3.93215937, 3.84423549)*unit.nanometers 
+# Define CVs and restraint forces
+
+# Translation restraint on protein
+com = mdj.compute_center_of_mass(pdb, select='protein and type!="H"')
+dummy_atom_pos = omm.vec3.Vec3(*com[0])*unit.nanometers
 translation_res = Translation_restraint(protein_idxs, dummy_atom_pos,
                                  force_const=41840*unit.kilojoule_per_mole/unit.nanometer**2) #41840
 system.addForce(translation_res)
 
 # Orientaion restraint
-# q_centers = [1.0, 0.0, 0.0, 0.0]
-# q_force_consts = [8368*unit.kilojoule_per_mole/unit.nanometer**2 for _ in range(4)]
-# orientaion_res = Orientaion_restraint(ref_pos, protein_idxs.tolist(), q_centers, q_force_consts)
-# system.addForce(orientaion_res)
-q_centers = [1.0]
-q_force_consts = [8368*unit.kilojoule_per_mole/unit.nanometer**2 for _ in range(1)]
+q_centers = [1.0, 0.0, 0.0, 0.0]
+q_force_consts = [8368*unit.kilojoule_per_mole/unit.nanometer**2 for _ in range(4)]
 orientaion_res = Orientaion_restraint(ref_pos, protein_idxs.tolist(), q_centers, q_force_consts)
 system.addForce(orientaion_res)
-# q_cvs = []
-# for i in range(4):
-#     q_restraint = Orientaion_restraint(ref_pos, protein_idxs.tolist(), i, 
-#                                        center=q_centers[0]*unit.nanometer, 
-#                                        force_const=8368*unit.kilojoule_per_mole/unit.nanometer**2) # 8368
-#     system.addForce(q_restraint)
-#     q_cvs.append(q_restraint)
 
-# Metadynamics on RMSD
 rmsd_cv = omm.RMSDForce(ref_pos, ligand_idxs)
 
 # RMSD CV
@@ -137,17 +128,16 @@ system.addForce(rmsd_harmonic_wall)
 
 #omma.metadynamics.BiasVariable using modefied version from biosimspace
 sigma_rmsd = 0.01
-rmsd_bias = BiasVariable(rmsd_cv, minValue=0.0*unit.nanometer, maxValue=0.4*unit.nanometer, 
+rmsd_bias = omma.metadynamics.BiasVariable(rmsd_cv, minValue=0.0*unit.nanometer, maxValue=0.4*unit.nanometer,
                                            biasWidth=sigma_rmsd*unit.nanometer, periodic=False, gridWidth=400)
 
 bias = 20.0
-meta = Metadynamics(system, [rmsd_bias], 
+meta = omma.metadynamics.Metadynamics(system, [rmsd_bias],
                                         TEMPERATURE,
                                         biasFactor=bias,
-                                        height=0.75*unit.kilojoules_per_mole,
-                                        frequency=500,
-                                        saveFrequency=500,
-                                        biasDir=".")
+                                        height=0.5*unit.kilojoules_per_mole,
+                                        frequency=HILLS_REPORTER_STEPS)
+
 integrator = omm.LangevinIntegrator(TEMPERATURE, FRICTION_COEFFICIENT, STEP_SIZE)
 
 platform = omm.Platform.getPlatformByName(PLATFORM)
@@ -157,6 +147,13 @@ prop = dict(Precision=PRECISION)
 #     f.setForceGroup(i)
 
 simulation = omma.Simulation(prmtop.topology, system, integrator, platform, prop)
+if osp.exists(STAR_CHECKPOINT):
+    print(f"Start Simulation from checkpoint {STAR_CHECKPOINT}")
+    simulation.loadCheckpoint(STAR_CHECKPOINT)
+else:
+    print("Can not find the checkpoint")
+#simulation.context.setPositions(ref_pos)
+
 
 # make the integrator
-report_timing(system, coords, "Run time for this step:")
+report_timing(meta, simulation, "Run time for this step:")
